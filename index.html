@@ -1,0 +1,1364 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>소등 — Lights Out</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Serif+KR:wght@400;600;900&display=swap" rel="stylesheet">
+<style>
+/* 모달(인물·일지·결과 카드)은 시스템 테마를 따른다. 게임 화면 자체는 지하의 어둠이라 항상 어둡다. */
+:root{
+  --surface:#ECEEF0; --surface2:#E1E4E8; --ink:#17181A; --muted:#5E636B; --line:#BEC3CA;
+  --amber:#A8740F; --amberInk:#7A5408;
+  --relief:#2F7A4C; --hope:#A8740F; --heavy:#A8382E; --crisis:#6E1C1C;
+  --btn:#17181A; --btnInk:#ECEEF0;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --surface:#1B1915; --surface2:#24211C; --ink:#E9E3D6; --muted:#9E978A; --line:#3A352D;
+    --amber:#E0A526; --amberInk:#E0A526;
+    --relief:#5FAE79; --hope:#E0A526; --heavy:#D0604F; --crisis:#B5403A;
+    --btn:#E0A526; --btnInk:#161616; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --surface:#1B1915; --surface2:#24211C; --ink:#E9E3D6; --muted:#9E978A; --line:#3A352D;
+  --amber:#E0A526; --amberInk:#E0A526;
+  --relief:#5FAE79; --hope:#E0A526; --heavy:#D0604F; --crisis:#B5403A;
+  --btn:#E0A526; --btnInk:#161616; color-scheme:dark;
+}
+/* 게임 화면 고정 색 */
+:root{--g-bg:#0B0A08; --g-panel:#15130E; --g-edge:#3D3426; --g-ink:#ECE4D2; --g-dim:#A89C84; --g-amber:#E0A526; --g-ash:#D9DDE3;}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+html,body{margin:0;height:100%;background:var(--g-bg)}
+body{color:var(--g-ink);font-family:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--g-amber);outline-offset:2px}
+
+#app{position:fixed;inset:0;display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+
+/* HUD */
+.hud{flex:none;display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;padding:7px 16px;background:linear-gradient(#1E1A12,#110F0A);border-bottom:1px solid var(--g-edge);min-height:58px;position:relative;z-index:5}
+.hday{display:flex;align-items:baseline;gap:10px;margin-right:auto;min-width:0}
+.hday b{font-family:'Noto Serif KR',serif;font-weight:900;font-size:28px;color:var(--g-amber);line-height:1;white-space:nowrap}
+.hday span{font-size:13px;color:var(--g-dim);white-space:nowrap}
+.hday span i{font-style:normal;color:var(--g-amber)}
+.meters{display:flex;gap:6px;flex-wrap:wrap}
+.mt{background:#0E0C08;border:1px solid #5A4A2E;border-radius:4px;padding:3px 10px 5px;min-width:104px;box-shadow:inset 0 0 0 1px #000}
+.mt small{font-size:11px;color:var(--g-dim);margin-right:5px}
+.mt b{font-size:16px;color:var(--g-amber);font-weight:900;font-variant-numeric:tabular-nums}
+.mt.bad b{color:#E06A50}
+.mt .bar{height:3px;background:#2a2418;margin-top:3px}
+.mt .bar i{display:block;height:100%;background:var(--g-amber)}
+.mt.bad .bar i{background:#E06A50}
+.res{display:flex;gap:4px 12px;flex-wrap:wrap;font-size:12.5px;color:var(--g-dim);align-items:center}
+.res b{color:var(--g-ink);font-weight:700;font-variant-numeric:tabular-nums;margin-left:3px}
+.res .bad b{color:#E06A50}
+.res .looks b{color:var(--g-amber)}
+.hbtns{display:flex;gap:6px}
+.hb{background:#0E0C08;border:1px solid #5A4A2E;color:var(--g-ink);border-radius:4px;padding:6px 12px;font-size:13px}
+.hb:hover{border-color:var(--g-amber)}
+
+/* 무대 */
+.stage{flex:1;position:relative;overflow:hidden;background:var(--g-bg);min-height:0}
+#world{position:absolute;image-rendering:pixelated;image-rendering:crisp-edges;left:0;top:0}
+#spots{position:absolute;inset:0;pointer-events:none;z-index:2}
+.spot{pointer-events:auto;position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;border:0;padding:0;background:transparent}
+.spot::before{content:"";position:absolute;inset:5px;border-radius:50%;background:#EEE9DA;box-shadow:0 0 0 2px rgba(20,17,12,.85),0 0 10px rgba(238,233,218,.6)}
+.spot::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid rgba(238,233,218,.7);animation:ring 2.4s ease-out infinite}
+.spot.spent::before{background:#8A8577;box-shadow:0 0 0 2px rgba(20,17,12,.85)}
+.spot.spent::after{animation:none;opacity:0}
+.spot .lbl{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);white-space:nowrap;background:rgba(14,12,8,.94);border:1px solid var(--g-edge);border-radius:4px;padding:3px 8px;font-size:12px;color:var(--g-ink);opacity:0;pointer-events:none;transition:opacity .15s}
+.spot:hover .lbl,.spot:focus-visible .lbl{opacity:1}
+@keyframes ring{0%{transform:scale(.55);opacity:.9}100%{transform:scale(1.35);opacity:0}}
+.locked .spot{opacity:.35}
+.locked .spot::after{animation:none}
+
+.eventtag{position:absolute;top:14px;left:18px;z-index:3;text-shadow:0 2px 8px #000;pointer-events:none}
+.eventtag small{display:inline-block;font-size:12px;color:#161616;background:var(--g-amber);padding:1px 8px;border-radius:2px;margin-bottom:6px;font-weight:700}
+.eventtag b{display:block;font-family:'Noto Serif KR',serif;font-size:clamp(20px,2.4vw,32px);font-weight:900;color:var(--g-ink)}
+.eventtag em{font-style:normal;font-size:13px;color:var(--g-dim)}
+.signaltag{position:absolute;top:14px;right:18px;z-index:3;text-align:right;font-size:12.5px;color:var(--g-ash);text-shadow:0 1px 6px #000;background:rgba(10,9,7,.55);padding:6px 10px;border-radius:4px;border:1px solid rgba(90,74,46,.6)}
+.signaltag .dots{color:var(--g-amber);letter-spacing:2px}
+
+/* 하단 대화 영역 */
+.bottom{position:absolute;left:0;right:0;bottom:0;z-index:4;padding:72px 4% 14px;background:linear-gradient(to bottom,rgba(10,9,7,0),rgba(10,9,7,.9) 56px,rgba(10,9,7,.97));display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none}
+.bottom>*{pointer-events:auto}
+.bottom.empty{display:none}
+.dialog{width:min(820px,100%);font-family:'Noto Serif KR',serif;font-size:16.5px;line-height:1.85;color:var(--g-ink);cursor:pointer;max-height:30vh;overflow:auto;position:relative}
+.dialog:empty{display:none}
+.dialog .head{font-family:'Noto Sans KR',sans-serif;font-size:12px;color:var(--g-dim);margin-bottom:2px}
+.line{margin:0;opacity:.5}
+.line.cur{opacity:1}
+.line .who{font-family:'Noto Sans KR',sans-serif;font-weight:700;color:var(--g-amber);font-size:13.5px;margin-right:8px}
+.line.dark .who{color:#8E949C}
+.dfoot{display:flex;justify-content:space-between;font-family:'Noto Sans KR',sans-serif;font-size:12px;color:var(--g-dim);margin-top:4px}
+.dfoot .go{color:var(--g-amber)}
+.dialog.compact{max-height:3.9em}
+.prompt{font-family:'Noto Serif KR',serif;font-weight:600;font-size:15.5px;color:var(--g-ink);width:min(1180px,100%)}
+.prompt:empty{display:none}
+.choices{width:min(1180px,100%);display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.choices:empty{display:none}
+.opt{text-align:left;background:rgba(22,19,14,.96);border:1px solid #4B4130;border-radius:6px;padding:11px 13px;display:flex;flex-direction:column;gap:6px;color:var(--g-ink)}
+.opt:hover:not([disabled]){border-color:var(--g-amber);background:rgba(34,29,20,.98)}
+.opt[disabled]{opacity:.42;cursor:not-allowed}
+.opt .k{font-family:'Noto Serif KR',serif;font-weight:900;font-size:18px;color:var(--g-amber);line-height:1;margin-right:6px}
+.opt h3{margin:0;font-size:15px;font-weight:700;line-height:1.35;display:flex;align-items:baseline}
+.opt p{margin:0;color:var(--g-dim);font-size:12.5px}
+.tags{display:flex;flex-wrap:wrap;gap:4px}
+.tag{font-size:11.5px;padding:1px 7px;border-radius:3px;background:#221E16;border:1px solid #3F3627;white-space:nowrap;color:#D9CFBA}
+.tag.q{border-style:dashed;color:#E58B74;border-color:#7A4436}
+.tag.back{color:var(--g-amber)}
+.tag.c{color:#F1D79A;border-color:#6D5A31}
+.risk{margin-top:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--g-dim);border-top:1px dashed #3F3627;padding-top:6px}
+.risk .bar{flex:1;height:5px;background:#2A251B;overflow:hidden}
+.risk .bar i{display:block;height:100%}
+.risk b{font-variant-numeric:tabular-nums;color:var(--g-ink)}
+.why{font-size:12px;color:#E58B74}
+
+/* 살핌 팝오버 · 알림 */
+.pop{position:absolute;z-index:6;width:min(320px,calc(100% - 20px));background:rgba(18,16,11,.97);border:1px solid #5A4A2E;border-radius:6px;padding:12px 14px;color:var(--g-ink);box-shadow:0 10px 30px rgba(0,0,0,.6)}
+.pop h4{margin:0 0 4px;font-size:15px;font-family:'Noto Serif KR',serif}
+.pop .inf{font-size:13px;color:var(--g-dim);margin-bottom:8px}
+.pop .act{display:block;width:100%;text-align:left;background:#221E16;border:1px solid #4B4130;border-radius:5px;padding:8px 10px;margin-top:6px}
+.pop .act:hover:not([disabled]){border-color:var(--g-amber)}
+.pop .act[disabled]{opacity:.5;cursor:not-allowed}
+.pop .act b{display:block;font-size:13.5px;margin-bottom:4px}
+.pop .pf{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--g-dim)}
+.pop .pf button{background:none;border:0;color:var(--g-dim);font-size:12px}
+.toast{position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:7;width:min(480px,92%);background:rgba(18,16,11,.97);border:1px solid var(--g-amber);border-radius:6px;padding:10px 14px;font-size:14px;color:var(--g-ink);font-family:'Noto Serif KR',serif;transition:opacity .4s}
+.toast .fx{margin-top:6px}
+
+/* 모달 */
+.modal{position:fixed;inset:0;background:rgba(6,6,6,.62);display:flex;align-items:flex-start;justify-content:center;padding:max(24px,env(safe-area-inset-top,0px)) 14px 24px;overflow:auto;z-index:20}
+.panel{background:var(--surface);color:var(--ink);border-radius:10px;max-width:640px;width:100%;border:1px solid var(--line);overflow:hidden;margin:auto 0}
+.panel.wide{max-width:860px}
+.lab{padding:11px 18px;color:#fff;font-weight:700;font-size:14px}
+.lab.relief{background:var(--relief)}.lab.hope{background:var(--hope);color:#161616}.lab.heavy{background:var(--heavy)}.lab.crisis{background:var(--crisis)}.lab.plain{background:var(--surface2);color:var(--ink)}
+.pbody{padding:16px 20px 18px}
+.pbody h2{font-family:'Noto Serif KR',serif;font-size:20px;margin:0 0 6px;font-weight:900}
+.sec{border-top:1px solid var(--line);padding:10px 0 4px;margin-top:10px}
+.sec h4{margin:0 0 4px;font-size:12.5px;color:var(--muted);font-weight:500}
+.sec .txt{font-family:'Noto Serif KR',serif;font-size:15.5px;line-height:1.75}
+.fx{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.fx span{font-size:12px;padding:2px 7px;border-radius:4px;background:var(--surface2);border:1px solid var(--line);color:var(--ink)}
+.fx span.g{border-color:var(--hope);color:var(--amberInk)}
+.fx span.r{border-color:var(--heavy);color:var(--heavy)}
+.toast .fx span{background:#221E16;border-color:#3F3627;color:#D9CFBA}
+.toast .fx span.g{color:var(--g-amber);border-color:#6D5A31}
+.toast .fx span.r{color:#E58B74;border-color:#7A4436}
+.sub{font-size:12.5px;color:var(--muted)}
+.event-line{font-size:13.5px;margin:4px 0;padding-left:10px;border-left:3px solid var(--line)}
+.event-line.r{border-color:var(--crisis)}.event-line.g{border-color:var(--hope)}
+.actions{display:flex;justify-content:flex-end;gap:8px;padding:0 20px 18px}
+.btn{background:var(--btn);color:var(--btnInk);border:0;border-radius:7px;padding:10px 20px;font-weight:700}
+.ppl{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+.pc{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface2)}
+.pc.gone{opacity:.45}
+.pc h5{margin:0;font-size:14.5px}
+.pc h5 small{font-weight:400;color:var(--muted);font-size:12px;margin-left:4px}
+.meter{display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px}
+.meter .bar{flex:1;height:5px;background:var(--surface);border-radius:3px;overflow:hidden}
+.meter .bar i{display:block;height:100%}
+.pc .ab{font-size:11.5px;color:var(--muted);margin-top:5px}
+.pc .stt{font-size:11.5px;color:var(--heavy);margin-top:3px}
+.logrow{display:grid;grid-template-columns:54px 1fr;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:13.5px}
+.logrow b{font-family:'Noto Serif KR',serif}
+.dotlab{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+
+/* 타이틀 · 엔딩 */
+.cover{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;justify-content:center;padding:5% 7%;color:var(--g-ink);background:linear-gradient(90deg,rgba(10,9,7,.93) 0%,rgba(10,9,7,.62) 50%,rgba(10,9,7,.05) 100%)}
+.cover h1{font-family:'Noto Serif KR',serif;font-weight:900;font-size:clamp(54px,10vw,140px);line-height:.95;margin:0;letter-spacing:-.02em}
+.cover .en{font-size:clamp(12px,1.4vw,16px);color:var(--g-ash);letter-spacing:.5em;margin:10px 0 0 4px}
+.cover .lead{font-family:'Noto Serif KR',serif;color:#C8C0AE;max-width:30em;margin:18px 0 24px;font-size:clamp(13px,1.5vw,17px)}
+.cover .row{display:flex;gap:10px;flex-wrap:wrap}
+.cbtn{background:var(--g-amber);color:#161616;border:0;border-radius:6px;padding:11px 22px;font-weight:700}
+.cbtn.alt{background:transparent;color:var(--g-ink);border:1px solid #5a554d}
+.cbtn:disabled{opacity:.4;cursor:not-allowed}
+.endgrid{display:flex;gap:6px;margin-top:22px;flex-wrap:wrap}
+.endgrid span{font-size:12px;border:1px solid #4a463f;border-radius:4px;padding:3px 8px;color:#8a857b}
+.endgrid span.got{border-color:var(--g-amber);color:var(--g-amber)}
+.ending h1{font-size:clamp(36px,6vw,76px)}
+.ending .lead{font-size:clamp(14px,1.7vw,19px);line-height:1.8}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:reduce){.spot::after{animation:none}}
+
+/* 세로 화면(휴대폰): 장면은 위, 대화와 선택은 아래로 */
+@media (max-aspect-ratio:1/1){
+  body{overflow:auto}
+  #app{position:static;min-height:100vh}
+  .hud{position:sticky;top:0;padding:6px 10px}
+  .hday b{font-size:22px}
+  .mt{min-width:0;padding:2px 7px 4px}.mt b{font-size:14px}
+  .stage{flex:none;width:100%;padding-top:56.25%;overflow:visible}
+  .mt .bar{display:none}
+  .hb{padding:4px 10px}
+  .bottom{position:static;background:#0E0C09;padding:12px 12px 20px}
+  .dialog{max-height:none;font-size:15.5px}
+  .dialog.compact{max-height:none}
+  .choices{grid-template-columns:1fr}
+  .signaltag{display:none!important}
+  .eventtag b{font-size:18px}
+  .eventtag em{display:none}
+  .eventtag{top:8px;left:10px}
+  .cover{padding:6%}
+  .cover h1{font-size:clamp(44px,16vw,90px)}
+  .toast{top:10px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="hud" id="hud">
+    <div class="hday" id="hday"><b>소등</b><span>Lights Out</span></div>
+    <div class="meters" id="meters"></div>
+    <div class="res" id="res"></div>
+    <div class="hbtns"><button class="hb" id="btnPeople">인물</button><button class="hb" id="btnLog">일지</button></div>
+  </header>
+  <section class="stage" id="stage">
+    <div id="spots"></div>
+    <div class="eventtag" id="eventtag"></div>
+    <div class="signaltag hidden" id="signaltag"></div>
+    <div class="bottom empty" id="bottom">
+      <div class="dialog" id="dialog" role="log" aria-live="polite"></div>
+      <div class="prompt" id="prompt"></div>
+      <div class="choices" id="choices"></div>
+    </div>
+    <div class="cover hidden" id="cover"></div>
+  </section>
+</div>
+<div class="modal hidden" id="modal"><div class="panel" id="panel"></div></div>
+<script>
+'use strict';
+/* ============ 기본 유틸 ============ */
+const SAVE_KEY='sodeung_save_v1', END_KEY='sodeung_endings_v1';
+const store={
+  get(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},
+  del(k){try{localStorage.removeItem(k)}catch(e){}}
+};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const roll=()=>Math.floor(Math.random()*100)+1;
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+const sgn=n=>n>0?'+'+n:n<0?'−'+Math.abs(n):'±0';
+function josa(w,a,b){const c=w.charCodeAt(w.length-1);if(c<0xAC00||c>0xD7A3)return w+b;return w+(((c-0xAC00)%28)?a:b);}
+
+/* ============ 인물 ============ */
+const CHARS=[
+ {id:'dokyung',name:'한도경',short:'도경',age:41,sex:'남',job:'새봄역 부역장',hp:90,mo:65,ab:'리더 · 6일차 보강 +15 · 역무실 비상함을 안다'},
+ {id:'yunhee',name:'서윤희',short:'윤희',age:36,sex:'여',job:'역 앞 약국 약사',hp:85,mo:60,ab:'간병 +5/일 · 의약품 치료 +20'},
+ {id:'mansuk',name:'박만석',short:'만석',age:68,sex:'남',job:'역 미화원',hp:55,mo:55,ab:'무릎 부상 · 원정·방어 불가'},
+ {id:'haneul',name:'박하늘',short:'하늘',age:8,sex:'여',job:'만석의 손녀',hp:85,mo:75,ab:'원정·방어 불가 · 작은 숨 「할아버지 그림」'},
+ {id:'daeun',name:'정다은',short:'다은',age:17,sex:'여',job:'고등학생',hp:85,mo:70,ab:'발소리가 가볍다 · 원정 성공률 +10%'},
+ {id:'sungjin',name:'오성진',short:'성진',age:29,sex:'남',job:'배달 라이더',hp:90,mo:70,ab:'원정 실패 피해 절반 · 작은 숨 「계단 위 이야기」'},
+ {id:'miso',name:'김미소',short:'미소',age:33,sex:'여',job:'어린이집 교사',hp:80,mo:60,ab:'다독임: 밤 소리 −3 · 작은 숨 「속삭이는 동화」'},
+ {id:'taeo',name:'강태오',short:'태오',age:45,sex:'남',job:'헬스장 관장',hp:95,mo:45,ab:'방어 1순위 · 방어 시 습격 피해 −5'},
+ {id:'jinseok',name:'유진석',short:'진석',age:52,sex:'남',job:'지하철 전기 기술자',hp:70,mo:60,ab:'전기 담당 · 작은 숨 「라디오 잡음」'},
+ {id:'eunbi',name:'최은비',short:'은비',age:24,sex:'여',job:'역 편의점 아르바이트생',hp:80,mo:55,ab:'편의점 재고 관리 (없으면 편의점 +3/일)'},
+];
+const JOINERS=[
+ {id:'jisu',name:'지수',short:'지수',age:38,sex:'여',job:'대피소에서 걸어온 사람',hp:70,mo:50,ab:'원정 가능 · 합류 후 원정 성공률 +5%'},
+ {id:'wujin',name:'우진',short:'우진',age:7,sex:'남',job:'지수의 아들',hp:80,mo:45,ab:'원정·방어 불가 · 밤마다 악몽 (소리 +3)'},
+];
+const ORDER={exp:['sungjin','daeun','taeo','dokyung','jisu'],def:['taeo','dokyung','sungjin'],med:['yunhee','miso','eunbi'],elec:['jinseok','eunbi']};
+const WEAK=['mansuk','haneul','wujin'];
+const CLOSE={mansuk:['haneul'],haneul:['mansuk','miso'],jisu:['wujin'],wujin:['jisu']};
+
+let S=null;
+const UI={render(){},say:async()=>{},choose:async(c,o)=>o.find(x=>!x.disabled),card:async()=>{},finish:async()=>{}};
+
+function mkP(c,orig){return Object.assign({},c,{alive:true,left:false,orig,isolated:false,bite:null,collapse:0,dying:0,quiet:0,care:null,flagS:false,flagD:false,giving:false,busy:false,cause:null});}
+function newGame(){
+  S={day:1,food:60,water:70,butane:4,battery:8,meds:3,
+    people:CHARS.map(c=>mkP(c,true)),
+    screen:false,reinforced:0,defPerm:0,solar:false,blackout:false,
+    hope:0,hopeGot:[],community:0,streak:0,
+    signals:shuffle(['supply','radio','people']),sigCarry:0,sigResult:[null,null,null],segRaid:[false,false,false],
+    expSuccess:0,mem:{},shop:{stock:4,storage:false,drawer:false,vend:false},phase:'title',queue:[],biteRule:null,ramen9:false,halfRation:0,jisuJoined:false,
+    breath:{},lostPrev:[],lossDays:[],aid:{box:false,count:0,last:-99,pending:null},
+    lowDays:0,fallen:false,log:[],over:null,hopeUpPrev:false,tonight:null,today:null,lostToday:[]};
+}
+
+/* ============ 조회 ============ */
+const P=id=>S.people.find(p=>p.id===id);
+const here=p=>!!(p&&p.alive&&!p.left);
+const live=()=>S.people.filter(here);
+const avgMo=()=>{const l=live();return l.length?Math.round(l.reduce((a,p)=>a+p.mo,0)/l.length):0;};
+const hpBand=h=>h>=80?'건강':h>=50?'부상':h>=20?'중상':'빈사';
+const moBand=m=>m>=80?'희망':m>=50?'불안':m>=25?'절망':'붕괴';
+const foodBand=f=>f>=70?'여유':f>=40?'부족':f>=20?'위기':'기근';
+const riskBand=p=>p<=15?'잠잠':p<=35?'주의':p<=60?'경계':'위험';
+const seg=()=>Math.floor((S.day-1)/5);
+function caregiverId(){
+  const need=live().some(p=>p.care==='med'||(p.isolated&&p.bite&&p.bite.rule==='A'));
+  if(!need)return null;
+  const m=ORDER.med.map(P).find(p=>here(p)&&!p.isolated&&p.hp>=20);
+  return m?m.id:null;
+}
+function able(p){return here(p)&&!p.isolated&&p.hp>=50&&!WEAK.includes(p.id)&&p.id!==caregiverId();}
+function fill(slots){
+  const used=[],team=[];
+  for(const sl of slots){
+    let p=P(sl.want);
+    if(!(able(p)&&!used.includes(p.id))){p=null;for(const id of ORDER[sl.role]){const q=P(id);if(able(q)&&!used.includes(id)){p=q;break;}}}
+    if(!p)return null;
+    used.push(p.id);team.push({p,sub:p.id!==sl.want,want:sl.want});
+  }
+  return team;
+}
+function expChance(team,base){
+  const minH=Math.min(...team.map(t=>t.p.hp)),minM=Math.min(...team.map(t=>t.p.mo));
+  let c=base+(minH>=80?10:-10)+(minM>=80?10:minM>=50?0:-10);
+  if(team.some(t=>t.p.id==='daeun'))c+=10;
+  if(S.jisuJoined)c+=5; if(S.community>=3)c+=5; if(S.hope>=2)c+=5; if(S.today&&S.today.scout)c+=5;
+  return clamp(c,10,95);
+}
+function judge(c,half=true){const r=roll();if(r<=c)return{r,res:'ok'};if(half&&r-c<=10)return{r,res:'half'};return{r,res:'fail'};}
+
+/* ============ 효과 ============ */
+const RN={food:'식량',water:'물',butane:'부탄가스',battery:'배터리',meds:'의약품'};
+function res(k,n,fx){const max=(k==='food'||k==='water')?100:999;const b=S[k];S[k]=clamp(S[k]+n,0,max);const d=S[k]-b;if(fx&&d)fx.push(`${RN[k]} ${sgn(d)}`);return d;}
+function mo(id,n,fx){const p=typeof id==='string'?P(id):id;if(!here(p)||!n)return;p.mo=clamp(p.mo+n,0,100);if(fx)fx.push(`${p.short} 사기 ${sgn(n)}`);}
+function moAll(n,fx,label){if(!n)return;live().forEach(p=>p.mo=clamp(p.mo+n,0,100));if(fx)fx.push(`${label||'사기(전체)'} ${sgn(n)}`);}
+function checkFlags(p){
+  if(!here(p))return;
+  if(p.hp<=49&&!p.flagS){p.flagS=true;S.queue.push({t:'med',id:p.id,kind:p.hp<=19?'빈사':'중상'});if(p.hp<=19)p.flagD=true;}
+  else if(p.hp<=19&&!p.flagD){p.flagD=true;if(!S.queue.some(q=>q.t==='med'&&q.id===p.id))S.queue.push({t:'med',id:p.id,kind:'빈사'});}
+}
+function hpd(id,n,fx){const p=typeof id==='string'?P(id):id;if(!here(p)||!n)return;let v=clamp(p.hp+n,0,100);if(S.day<=3&&v<1)v=1;const d=v-p.hp;p.hp=v;if(fx&&d)fx.push(`${p.short} 체력 ${sgn(d)}`);checkFlags(p);}
+function hpAll(n,fx){live().forEach(p=>hpd(p,n));if(fx)fx.push(`체력(전체) ${sgn(n)}`);}
+function kill(p,cause,shock){
+  if(!here(p))return false;
+  if(S.day<=3&&cause!=='변이'){p.hp=Math.max(1,p.hp);return false;}
+  p.alive=false;p.cause=cause;p.deathDay=S.day;p.care=null;p.isolated=false;
+  S.lostToday.push({id:p.id,shock:shock==null?8:shock,cause});return true;
+}
+function useMed(p,fx){
+  res('meds',-1,fx);res('water',-2,fx);
+  const y=P('yunhee');let a=(here(y)&&!y.isolated)?20:15;if(S.blackout)a=Math.floor(a/2);
+  hpd(p,a,fx);p.quiet=3;p.care=null;
+}
+function biteSuspect(p,fx,chain){
+  if(!here(p)||p.bite)return;
+  const inf=roll()<=50;
+  p.bite={day:S.day,inf,fever:inf||roll()<=30,chain:!!chain,rule:null};
+  if(fx)fx.push(`${p.short} 물림 의심 ?`);
+  if(S.biteRule)applyBiteRule(p);
+  else if(!S.queue.some(q=>q.t==='bite'))S.queue.unshift({t:'bite',id:p.id});
+}
+function applyBiteRule(p){p.bite.rule=S.biteRule;if(S.biteRule!=='C')p.isolated=true;}
+
+const HOPE_SRC=[
+ {id:'d3',lv:1,t:'3일차 원정 — 마트 게시판의 대피소 전단지'},
+ {id:'d4',lv:1,t:'4일차 A — 태양광 패널과 함께 살아난 라디오'},
+ {id:'supA',lv:1,t:'보급 신호 A — 상자 겉면의 대피소 안내'},
+ {id:'radioNoise',lv:2,t:'작은 숨 「라디오 잡음」 — 이어폰 너머의 방송'},
+ {id:'d7',lv:2,t:'7일차 C — 약사의 이송 메모'},
+ {id:'d9',lv:2,t:'9일차 원정 — 대피소 이송 안내 공고문'},
+ {id:'radA',lv:2,t:'무전 신호 — 다른 역의 목소리'},
+ {id:'pplB',lv:2,t:'사람 신호 B — 지수가 남긴 대피소 이야기'},
+ {id:'d12A',lv:3,t:'12일차 A — 대피소 옥상의 응답하는 불빛'},
+ {id:'d12B',lv:3,t:'12일차 B — 대피소 안내 방송'},
+ {id:'pplA',lv:3,t:'사람 신호 A — 길을 아는 지수'},
+];
+const HOPE_NAME=['없음','① 소문','② 목소리','③ 길'];
+function gainHope(src,fx){
+  if(!S.hopeGot.includes(src))S.hopeGot.push(src);
+  const lv=HOPE_SRC.find(h=>h.id===src).lv;
+  while(S.hope<lv){S.hope++;const b=[0,2,2,4][S.hope];moAll(b);if(fx)fx.push(`★ 희망 ${HOPE_NAME[S.hope]} · 사기(전체) +${b}`);S.today.hopeUp=true;}
+}
+
+/* ============ 대사 도우미 ============ */
+const L=(id,t)=>{const p=P(id);return here(p)?{who:p.short,t,id}:null;};
+const N=t=>({t});
+const R=(label,text,sub)=>({label,text,sub});
+
+/* ============ 밤 습격 계산 ============ */
+const density=()=>S.day<=3?0:S.day<=7?5:S.day<=10?15:10;
+const defense=()=>5+S.reinforced+S.defPerm;
+function personSound(){
+  let s=0;live().forEach(p=>{if(p.quiet>0)return;if(p.hp<=19)s+=6;else if(p.hp<=49)s+=3;});
+  if(here(P('wujin')))s+=3;return s;
+}
+function nightRisk(o){
+  o=o||{};const t=S.tonight;
+  const off=t.lightsOff||o.lightsOff;
+  let living=(S.blackout||off)?0:(S.screen?2:5);if(t.lowLantern)living=Math.floor(living/2);
+  const lights=t.lights.slice();if(o.light)lights.push({v:o.light,stairs:!!o.stairs});
+  const Lt=lights.reduce((a,l)=>a+((S.screen&&!l.stairs)?l.v*0.5:l.v),0);
+  let snd=personSound()+t.sound+(o.sound||0);
+  const m=P('miso');if(here(m)&&!m.isolated&&m.hp>=20)snd-=3;
+  snd=Math.max(0,snd);if(t.soundHalf||o.soundHalf)snd*=0.5;
+  const threat=o.threat!=null?o.threat:t.threat;
+  const def=defense()+t.def+(o.def||0);
+  return clamp(Math.round(5+living+Lt+snd*1.5+density()+threat-def),3,95);
+}
+function applyOptStatic(o){const t=S.tonight;if(o.light)t.lights.push({v:o.light,stairs:!!o.stairs});if(o.sound)t.sound+=o.sound;if(o.lightsOff)t.lightsOff=true;if(o.soundHalf)t.soundHalf=true;if(o.threat!=null)t.threat=o.threat;if(o.def)t.def+=o.def;}
+
+/* ============ 선택지 정의 도우미 ============ */
+function O(key,title,desc,o){return Object.assign({key,title,desc,tags:[],light:0,stairs:false,sound:0,def:0},o);}
+function expRun(fx,team,c,o){
+  team.forEach(t=>t.p.busy=true);
+  const j=judge(c,!o.noHalf);const head=`판정 ${c}% · 굴림 ${j.r} → `;
+  if(j.res==='ok'){o.ok();S.expSuccess++;S.today.exp=team.map(t=>t.p.id);return R('relief',o.okT,head+'성공');}
+  if(j.res==='half'){if(o.half)o.half();return R('relief',o.halfT||'무리의 발소리에 서둘러 물러났다. 절반만 챙겨 무사히 돌아왔다.',head+'아까운 실패 · 절반');}
+  expFail(team,fx);return R('crisis',o.failT,head+'실패');
+}
+function expFail(team,fx){
+  const dmg=team.some(t=>t.p.id==='sungjin')?10:20;
+  team.forEach(t=>hpd(t.p,-dmg,fx));
+  if(roll()<=40)biteSuspect(pick(team).p,fx);
+}
+const names=team=>team.map(t=>t.p.short).join('·');
+const EXP_TAG='실패 시 부상 · 물림 의심 ?';
+
+/* ============ 15일 이벤트 ============ */
+const EV={};
+EV[1]={title:'첫 번째 배급',axis:'식량 × 사기',
+ lines:()=>[N('정전 이튿날 아침. 비상조명은 첫날 밤에 꺼졌고, 역무실 앞 기둥에 건 랜턴 두 개만 대합실을 비춘다.'),
+   L('eunbi','편의점에 남은 걸 다 모았어요. 아껴 먹으면… 며칠은요.'),
+   L('dokyung','배급 기준부터 정합시다. 한 번 정하면, 그게 이 역의 규칙이 됩니다.'),
+   N('배급대 위에 그릇 열 개가 나란히 놓인다.')],
+ prompt:'무엇을 기준으로 나눌 것인가.',
+ options:()=>[
+  O('A','똑같이 나눈다','누구도 더 받지 않고, 누구도 덜 받지 않는다.',{tags:['변화 없음'],run:()=>{S.mem.d1='A';return R('relief','그릇 열 개에 같은 양이 담겼다. 아무도 불평하지 않았다.');}}),
+  O('B','일하는 사람에게 더','계단 위로 나갈 사람, 출구를 지킬 사람이 먼저다.',{tags:['원정·방어 담당 사기 +3','만석·하늘 사기 −4'],back:8,run:fx=>{['sungjin','daeun','taeo','dokyung'].forEach(id=>mo(id,3));fx.push('원정·방어 담당 사기 +3');mo('mansuk',-4,fx);mo('haneul',-4,fx);S.mem.d1='B';return R('heavy','성진과 태오의 그릇이 조금 더 찼다. 만석은 아무 말 없이 하늘의 그릇에 자기 몫을 덜어 주었다.');}}),
+  O('C','아이·노인·다친 사람 먼저','가장 약한 사람부터 채운다.',{tags:['만석·하늘 사기 +4','태오 사기 −3'],back:8,run:fx=>{mo('mansuk',4,fx);mo('haneul',4,fx);mo('taeo',-3,fx);S.mem.d1='C';return R('relief','하늘의 그릇이 가장 먼저 채워졌다. 태오는 빈 그릇을 한참 들고 서 있었다.');}}),
+ ]};
+EV[2]={title:'3번 출구의 빗물',axis:'물 × 빛',
+ lines:()=>[N('밤새 가을비가 내렸다. 3번 출구 계단을 타고 빗물이 졸졸 흘러내린다.'),
+   S.mem.d1==='C'?L('taeo','…애들 먼저 먹는 건 좋은데, 일할 사람이 쓰러지면 끝이야.'):S.mem.d1==='B'?N('만석이 어제 받은 그릇을 오래 내려다본다.'):null,
+   L('jinseok','빗물은 받아 두면 끓이지 않아도 돼요. 하늘에서 바로 온 거니까.'),
+   L('dokyung','셔터를 더 올리면 빛도 샙니다. 낮이긴 하지만.')],
+ prompt:'물을 어디서 구할 것인가.',
+ options:()=>[
+  O('A','셔터를 열고 빗물을 받는다','계단 끝까지 양동이를 늘어놓는다. 바닥이 젖는다.',{light:5,tags:['물 +20','사기(전체) −1'],run:fx=>{res('water',20,fx);moAll(-1,fx);return R('relief','양동이 여섯 개가 찼다. 대합실 바닥은 밤새 축축했다.');}}),
+  O('B','편의점 생수를 꺼낸다','아껴 둔 생수 한 묶음을 뜯는다.',{tags:['물 +8'],run:fx=>{res('water',8,fx);return R('relief','비닐 뜯는 소리가 대합실에 크게 울렸다.');}}),
+  O('C','출구를 막고 쉰다','비 오는 날은 쉬는 날이다.',{tags:['사기(전체) +2'],run:fx=>{moAll(2,fx);return R('relief','빗소리를 들으며 모두 일찍 누웠다.');}}),
+ ]};
+EV[3]={title:'동네 마트 창고',axis:'식량 × 사기',
+ lines:()=>[S.mem.d1==='B'?N('만석이 배급 그릇을 내려다본다.'):null,
+   L('eunbi','역 앞 사거리 동네 마트요. 창고 뒷문 비밀번호, 제가 알아요.'),
+   L('sungjin','걔들 눈은 거의 멀었어요. 소리만 안 내면 돼요. 조용히 갔다 오면 한 시간.'),
+   here(P('taeo'))?N('태오는 대답 대신 3번 출구 쪽을 본다. 계단 위로 희미한 햇빛이 내려와 있다.'):N('계단 위로 희미한 햇빛이 내려와 있다.')],
+ prompt:'누구를 계단 위로 올려보낼 것인가.',
+ options:()=>[
+  O('A','은비와 성진을 함께 보낸다','창고 비밀번호를 아는 사람과 길을 아는 사람.',{slots:[{role:'exp',want:'eunbi'},{role:'exp',want:'sungjin'}],chance:t=>expChance(t,65),tags:['식량 +18',EXP_TAG],
+    run:(fx,t,c)=>expRun(fx,t,c,{ok:()=>{res('food',18,fx);gainHope('d3',fx);},half:()=>res('food',9,fx),okT:'창고는 반쯤 비어 있었지만, 반은 남아 있었다. 게시판에서 떼어 온 전단지에 ‘구청 대피소’라는 글자가 보인다.',failT:'창고 문이 삐걱이는 소리에 무리가 돌아섰다. 둘은 빈손으로 계단을 굴러 내려왔다.'})}),
+  O('B','성진 혼자 다녀오게 한다','혼자가 더 조용하다. 대신 들고 올 수 있는 양이 적다.',{slots:[{role:'exp',want:'sungjin'}],chance:t=>expChance(t,75),tags:['식량 +10',EXP_TAG],
+    run:(fx,t,c)=>expRun(fx,t,c,{ok:()=>{res('food',10,fx);gainHope('d3',fx);},half:()=>res('food',5,fx),okT:'배낭 하나 가득. 성진은 게시판에 붙은 대피소 전단지도 떼어 왔다.',failT:'떨어진 캔 하나가 사거리에 울렸다. 성진은 다리를 절며 돌아왔다.'})}),
+  O('C','남아서 따뜻한 식사를 한다','버너에 불을 붙인다. 오늘만은 따뜻하게.',{light:10,need:()=>S.butane<1?'부탄가스가 없다':null,tags:['사기(전체) +5','부탄가스 −1'],run:fx=>{res('butane',-1,fx);moAll(5,fx);return R('relief','라면 국물 냄새가 대합실에 퍼졌다. 처음으로 누군가 웃었다.');}}),
+ ]};
+EV[4]={title:'출구 옆의 태양광 가로등',axis:'자원 × 체력',
+ lines:()=>[L('jinseok','3번 출구 옆 가로등, 태양광이에요. 패널째 떼 오면 매일 배터리 하나는 채울 수 있어요.'),
+   L('sungjin','사다리 없이요? 시간 좀 걸리겠네요.'),
+   N('배터리 상자에 남은 칸을 세어 보는 손이 많아졌다.')],
+ prompt:'가로등을 어떻게 할 것인가.',
+ options:()=>[
+  O('A','진석과 성진이 패널째 떼어 온다','오래 걸리지만, 매일 배터리가 생긴다. 역무실 라디오도 살아난다.',{slots:[{role:'elec',want:'jinseok'},{role:'exp',want:'sungjin'}],chance:t=>expChance(t,60-(t[0].sub?20:0)),tags:['배터리 +1/일 (영구)','절반이면 배터리 +2',EXP_TAG],
+    run:(fx,t,c)=>expRun(fx,t,c,{ok:()=>{S.solar=true;fx.push('태양광 패널 설치');gainHope('d4',fx);},half:()=>res('battery',2,fx),okT:'패널을 3번 출구 계단 볕에 세웠다. 진석이 라디오를 연결하자, 잡음 사이로 사람 목소리가 스쳤다.',halfT:'볼트가 녹슬어 패널은 떼지 못했다. 안의 배터리만 빼 왔다.',failT:'사다리 대신 쌓은 상자가 무너졌다. 소리를 듣고 그림자들이 모여들었다.'})}),
+  O('B','진석 혼자 배터리만 떼어 온다','빠르고 조용하다. 한 번뿐이다.',{slots:[{role:'elec',want:'jinseok'}],chance:t=>expChance(t,80-(t[0].sub?20:0)),tags:['배터리 +4',EXP_TAG],
+    run:(fx,t,c)=>expRun(fx,t,c,{ok:()=>res('battery',4,fx),half:()=>res('battery',2,fx),okT:'진석이 가로등 함에서 배터리 네 개를 꺼내 왔다.',failT:'공구가 계단에 떨어지는 소리. 진석은 피 묻은 손으로 돌아왔다.'})}),
+  O('C','위험하니 포기한다','지금 있는 것으로 버틴다.',{tags:['사기(전체) −1'],run:fx=>{moAll(-1,fx);return R('heavy','가로등은 오늘도 출구 옆에 서 있다. 아무도 그쪽을 보지 않았다.');}}),
+ ]};
+EV[5]={title:'만석의 무릎',axis:'체력 × 자원',
+ lines:()=>here(P('mansuk'))?[L('yunhee','무릎이 많이 부었어요. 약을 쓰면 빨리 가라앉을 텐데…'),L('mansuk','늙은이한테 쓰지 마. 앞으로 다칠 젊은 사람들 몫이야.'),here(P('haneul'))?N('하늘이 할아버지 손을 꼭 쥔다.'):null]
+   :[N('만석이 눕던 자리에 걸레 하나가 개어져 있다.'),L('yunhee','…구급함은 다음 사람을 위해 닫아 둘게요.')],
+ prompt:'만석의 무릎을 어떻게 할 것인가.',
+ options:()=>[
+  O('A','의약품을 쓴다','지금 아픈 사람에게 쓴다.',{need:()=>!here(P('mansuk'))?'만석이 없다':S.meds<1?'의약품이 없다':null,tags:['의약품 −1 · 물 −2','만석 체력 +15','하늘 사기 +4'],run:fx=>{useMed(P('mansuk'),fx);mo('haneul',4,fx);return R('relief','만석은 처음으로 밤새 깨지 않고 잤다.');}}),
+  O('B','쉬게만 한다','약은 아낀다. 쉬면 조금씩 나아진다.',{tags:['만석 휴식 +5/일 (79까지)'],run:()=>R('relief','만석은 기둥에 기대어 무릎을 주무른다. “이 정도는 괜찮아.”')}),
+  O('C','하늘이 간병한다','아이가 할아버지 곁을 지킨다.',{need:()=>!here(P('mansuk'))||!here(P('haneul'))?'만석과 하늘이 함께 있어야 한다':null,tags:['만석 체력 +3/일','하늘 사기 +5 · 체력 −5'],run:fx=>{P('mansuk').care='haneul';mo('haneul',5,fx);hpd('haneul',-5,fx);return R('relief','하늘이 젖은 수건을 짜서 할아버지 무릎에 얹는다. 서툴지만 정성스럽다.');}}),
+ ]};
+EV[6]={title:'출구를 지키는 법',axis:'빛 × 사기',
+ lines:()=>[L('dokyung','밤마다 계단 쪽이 신경 쓰입니다. 오늘 하나는 손을 봐야 해요.'),
+   L('jinseok','랜턴 빛이 천장을 타고 계단 위까지 번져요. 광고판으로 가리면 반은 줄 겁니다.'),
+   L('taeo','가리는 것보다 막는 게 먼저지.'),
+   N('모두 지쳐 있다. 누군가 랜턴을 조금만 더 밝게 하자고 중얼거린다.')],
+ prompt:'출구를 어떻게 지킬 것인가.',
+ options:()=>[
+  O('A','계단에 가림막을 세운다','역 광고판과 현수막으로 반사광을 막는다. 불을 켜는 마을에 유리하다.',{tags:['생활 조명 5 → 2','선택의 빛 ×0.5 (영구)'],run:fx=>{S.screen=true;fx.push('가림막 설치');return R('relief','계단 입구에 세운 광고판 속 모델이 대합실을 등지고 웃는다.');}}),
+  O('B','바리케이드를 보강한다','셔터 뒤에 자판기와 의자를 쌓는다. 어둠에서 버티는 마을에 유리하다.',{tags:[here(P('dokyung'))?'방어 +15 (도경)':'방어 +10','(영구)'],run:fx=>{S.reinforced=here(P('dokyung'))?15:10;fx.push(`방어 +${S.reinforced}`);return R('relief','도경이 자판기 다리를 철사로 묶었다. “이제 쉽게는 못 들어옵니다.”');}}),
+  O('C','오늘 밤만 랜턴을 가장 밝게','지친 모두를 위해.',{light:15,need:()=>S.battery<1?'배터리가 없다':null,tags:['사기(전체) +5','배터리 −1'],run:fx=>{res('battery',-1,fx);moAll(5,fx);return R('relief','밝아진 대합실에서 처음으로 서로의 얼굴을 제대로 보았다.');}}),
+ ]};
+EV[7]={title:'물탱크의 바닥',axis:'물 × 연료',
+ lines:()=>[L('eunbi','생수가… 이제 몇 묶음 안 남았어요.'),
+   L('jinseok','기계실 물탱크에 고인 지하수가 있어요. 끓이면 마실 수 있고.'),
+   L('yunhee','역 앞 우리 약국에도 정제수랑 약이 좀 있을 거예요.')],
+ prompt:'물을 어떻게 구할 것인가.',
+ options:()=>[
+  O('A','지하수를 끓인다','부탄가스를 쓴다. 안전하다.',{light:0,need:()=>S.butane<2?'부탄가스가 모자라다 (2 필요)':null,tags:['부탄가스 −2','물 +15'],run:fx=>{res('butane',-2,fx);res('water',15,fx);return R('relief','버너 위에서 지하수가 오래 끓었다. 쇠 냄새가 났지만 마실 수 있었다.');}}),
+  O('B','그냥 마신다','연료를 아낀다. 배탈이 날 수 있다.',{tags:['물 +15','식중독 위험 ?'],run:fx=>{res('water',15,fx);if(roll()<=40){const v=shuffle(live().filter(p=>!p.isolated)).slice(0,2);v.forEach(p=>hpd(p,-20,fx));return R('crisis',`${v.map(p=>p.short).join('과 ')}의 배가 뒤틀렸다. 고인 물이었다.`);}return R('relief','쇠 맛이 났지만 아무도 탈이 나지 않았다.');}}),
+  O('C','윤희와 성진이 약국에 다녀온다','물과 약을 함께 구할 수 있다.',{slots:[{role:'med',want:'yunhee'},{role:'exp',want:'sungjin'}],chance:t=>expChance(t,50),tags:['물 +8 · 의약품 +1',EXP_TAG],
+    run:(fx,t,c)=>expRun(fx,t,c,{ok:()=>{res('water',8,fx);res('meds',1,fx);gainHope('d7',fx);},half:()=>res('water',4,fx),okT:'약국 조제실 책상 위에 메모가 남아 있었다. “환자 이송: 구청 대피소.”',failT:'약국 유리문이 깨지는 소리가 사거리에 퍼졌다.'})}),
+ ]};
+EV.ramen={title:'라면 한 봉지',axis:'식량 × 사기',
+ lines:()=>[N('물통이 아직 넉넉하다. 2일차에 받아 둔 빗물 덕분이다.'),L('eunbi','창고 구석에서 라면 박스가 나왔어요! 유통기한 지났는데… 괜찮겠죠?'),N('누군가 꿀꺽 침을 삼키는 소리가 들린다.')],
+ prompt:'라면을 어떻게 할 것인가.',
+ options:()=>[
+  O('A','오늘 끓여 다 같이 먹는다','부탄가스를 써서 따뜻하게.',{light:10,need:()=>S.butane<1?'부탄가스가 없다':null,tags:['식량 +6','사기(전체) +6','부탄가스 −1'],run:fx=>{res('food',6,fx);res('butane',-1,fx);moAll(6,fx);return R('relief','열두 개의 젓가락이 한 냄비에 들어갔다.');}}),
+  O('B','아껴서 비축한다','언젠가 더 필요한 날이 온다.',{tags:['식량 +10'],run:fx=>{res('food',10,fx);return R('relief','라면 박스가 배급대 밑으로 들어갔다.');}}),
+  O('C','9일차 원정팀에게 몰아준다','가장 멀리 가는 사람들에게.',{tags:['식량 +4','9일차 원정 성공률 +10%'],run:fx=>{res('food',4,fx);S.ramen9=true;fx.push('9일차 원정 +10%');return R('relief','은비가 라면 봉지에 매직으로 ‘원정용’이라고 적었다.');}}),
+ ]};
+EV[8]={title:'입 하나',axis:'사기 × 갈등',
+ lines:()=>{
+   const t=P('taeo');let open;
+   if(here(t)&&t.mo<50)open=L('taeo','솔직히 말할게. 저 영감님, 쓸모없는 입 하나야. 계단 위에 나가는 건 우리라고.');
+   else if(here(t)){const low=live().filter(p=>!['mansuk','haneul','wujin'].includes(p.id)).sort((a,b)=>a.mo-b.mo)[0];open=low?L(low.id,'누가 말 안 하면 제가 할게요. 만석 할아버지 몫, 너무 많지 않아요?'):null;}
+   else open=L('sungjin','솔직히 다들 생각하잖아요. 만석 할아버지 몫, 줄여야 하는 거 아니에요?');
+   const mem=S.mem.d1==='B'?L(here(t)?'taeo':'sungjin','첫날부터 그렇게 나눠 왔잖아.'):S.mem.d1==='C'?L('haneul','첫날에 할아버지 먼저 주셨잖아요.'):null;
+   return [N('배급이 끝난 저녁. 그릇 긁는 소리가 유난히 크다.'),open,mem,here(P('mansuk'))?N('만석은 고개를 숙인 채 숟가락을 내려놓는다.'):null];},
+ prompt:'이 말을 어떻게 받을 것인가.',
+ options:()=>{const d1=S.mem.d1;const tA=d1==='B'?-6:d1==='C'?-1:-3;const mB=d1==='B'?-5:d1==='C'?-15:-10;return [
+  O('A','달래고, 만석의 자리를 지킨다','“여기 있는 사람은 다 식구입니다.”',{back:14,tags:[`태오 사기 ${sgn(tA)}`,'만석·하늘 사기 +4'],run:fx=>{mo('taeo',tA,fx);mo('mansuk',4,fx);mo('haneul',4,fx);S.mem.d8='A';return R('relief','태오는 등을 돌렸지만, 더는 말하지 않았다.');}}),
+  O('B','만석의 배급을 줄인다','일하는 사람이 먼저다.',{back:14,tags:[`만석·하늘 사기 ${sgn(mB)}`,'태오 사기 +5'],run:fx=>{mo('mansuk',mB,fx);mo('haneul',mB,fx);mo('taeo',5,fx);S.mem.d8='B';return R('heavy','만석은 자기 그릇을 반쯤 덜어 냈다. 하늘은 밤새 할아버지 등에 얼굴을 묻고 있었다.');}}),
+  O('C','어둠 속에서 모두 이야기한다','불을 줄이고 둘러앉아, 각자 두고 온 사람 이야기를 한다.',{sound:5,back:12,tags:['태오 사기 +8','만석·하늘 +4 · 그 외 +2'],run:fx=>{live().forEach(p=>{const n=p.id==='taeo'?8:(p.id==='mansuk'||p.id==='haneul')?4:2;p.mo=clamp(p.mo+n,0,100);});fx.push('태오 사기 +8','만석·하늘 사기 +4','그 외 사기 +2');S.mem.d8='C';return R('relief','태오가 처음으로 아내 이야기를 했다. 구청에서 일한다고, 거기 대피소가 있다고.');}}),
+ ];}};
+EV[9]={title:'텅 빈 편의점',axis:'식량 × 체력',
+ lines:()=>[L('eunbi','편의점… 이제 정말 아무것도 없어요.'),L('sungjin','1km 밖 대형마트요. 큰 데라 남은 게 있을 거예요. 대신 멀어요.'),L('dokyung','동네 마트를 한 번 더 뒤지는 방법도 있습니다.')],
+ prompt:'식량을 어떻게 구할 것인가.',
+ options:()=>[
+  O('A','태오와 다은이 대형마트에 간다','멀고 위험하지만, 많이 가져올 수 있다.',{slots:[{role:'exp',want:'taeo'},{role:'exp',want:'daeun'}],chance:t=>clamp(expChance(t,45)+(S.ramen9?10:0),10,95),tags:['식량 +26 · 부탄가스 +2',EXP_TAG],
+    run:(fx,t,c)=>expRun(fx,t,c,{ok:()=>{res('food',26,fx);res('butane',2,fx);gainHope('d9',fx);},half:()=>{res('food',13,fx);res('butane',1,fx);},okT:'두 사람은 카트 대신 배낭 네 개를 메고 돌아왔다. 마트 입구에는 ‘대피소 이송 안내’ 공고문이 붙어 있었다.',failT:'1km는 너무 멀었다. 돌아오는 길 내내 발소리가 따라왔다.'})}),
+  O('B','성진 혼자 동네 마트를 다시 뒤진다','가깝고 익숙하다. 남은 게 적다.',{slots:[{role:'exp',want:'sungjin'}],chance:t=>clamp(expChance(t,75)+(S.ramen9?10:0),10,95),tags:['식량 +12',EXP_TAG],
+    run:(fx,t,c)=>expRun(fx,t,c,{ok:()=>{res('food',12,fx);gainHope('d9',fx);},half:()=>res('food',6,fx),okT:'창고 선반 뒤에서 통조림 한 상자. 계산대엔 ‘대피소 이송 안내’ 공고문이 새로 붙어 있었다.',failT:'창고 문 뒤에 그들이 있었다.'})}),
+  O('C','배급을 절반으로 줄인다','사흘 동안 덜 먹고 버틴다.',{tags:['3일간 식량 소비 절반','사기(전체) −3/일'],run:fx=>{S.halfRation=3;fx.push('배급 절반 (3일)');return R('heavy','그릇 바닥이 보이는 저녁. 아무도 더 달라고 하지 않았다.');}}),
+ ]};
+EV[10]={title:'출구 앞의 그림자',axis:'빛 × 체력',threat:35,
+ lines:()=>[N('새벽, 셔터 틈으로 내다본 계단 위에 회백색 눈들이 모여 있다. 밤새 걸어온 무리다.'),L('dokyung','이대로면 오늘 밤 저 셔터가 버티질 못합니다.'),L('jinseok','손전등을 정면으로 비추면 물러나요. 대신 배터리가 많이 들어요.')],
+ prompt:'출구 앞의 무리를 어떻게 할 것인가.',
+ options:()=>[
+  O('A','손전등으로 쫓아낸다','강한 빛을 눈에 정면으로. 무리가 흩어진다.',{threat:0,need:()=>S.battery<3?'배터리가 모자라다 (3 필요)':null,slots:[{role:'def',want:'taeo'}],tags:['이벤트 위협 0','배터리 −3','30% 방어 담당 체력 −10','물림 의심 ?'],
+    run:(fx,t)=>{res('battery',-3,fx);t[0].p.busy=true;const r=roll();if(r<=30){hpd(t[0].p,-10,fx);biteSuspect(t[0].p,fx);return R('crisis',`무리는 흩어졌지만, 셔터 틈으로 뻗은 손이 ${josa(t[0].p.short,'을','를')} 할퀴었다.`,`판정 30% · 굴림 ${r}`);}return R('relief','빛을 맞은 그림자들이 비틀거리며 사거리 쪽으로 흩어졌다.',`판정 30% · 굴림 ${r} → 무사`);}}),
+  O('B','랜턴까지 끄고 숨죽인다','빛도 소리도 없이 밤을 넘긴다.',{lightsOff:true,threat:15,soundHalf:true,tags:['생활 조명 0','위협 15로 감소','오늘 밤 소리 절반','사기(전체) −3'],run:fx=>{moAll(-3,fx);return R('heavy','완전한 어둠. 하늘의 숨소리까지 들렸다.');}}),
+  O('C','태오와 도경이 밤새 바리케이드를 지킨다','몸으로 막는다.',{def:25,slots:[{role:'def',want:'taeo'},{role:'def',want:'dokyung'}],tags:['오늘 밤 방어 +25','두 사람 체력 −10'],run:(fx,t)=>{t.forEach(x=>{x.p.busy=true;hpd(x.p,-10,fx);});return R('relief',`${names(t)}, 두 사람이 셔터 뒤에 등을 대고 앉았다.`);}}),
+ ]};
+EV[11]={title:'조용한 아침',axis:'체력 × 사기',
+ lines:()=>[N('처음으로 아무 일도 없는 아침. 계단 위 햇빛이 유난히 하얗다.'),L('miso','오늘은… 그냥 조금 쉬면 안 될까요.')],
+ prompt:'이 하루를 어떻게 쓸 것인가.',
+ options:()=>[
+  O('A','남은 부탄으로 따뜻한 아침','버너에 불을 붙인다.',{light:10,need:()=>S.butane<1?'부탄가스가 없다':null,tags:['사기(전체) +5','부탄가스 −1'],run:fx=>{res('butane',-1,fx);moAll(5,fx);return R('relief','김이 오르는 그릇을 두 손으로 감쌌다.');}}),
+  O('B','대합실을 함께 정비한다','쓰러진 의자를 세우고, 셔터 레일을 손본다.',{tags:['방어 +3 (영구)','체력(전체) −3'],run:fx=>{S.defPerm+=3;fx.push('방어 +3');hpAll(-3,fx);return R('relief','저녁 무렵 대합실은 처음 왔을 때보다 조금 더 ‘집’ 같았다.');}}),
+  O('C','모두 하루 쉰다','아무것도 하지 않는 날.',{tags:['체력(전체) +5'],run:fx=>{hpAll(5,fx);return R('relief','오후 내내 낮잠을 잤다. 아무도 깨우지 않았다.');}}),
+ ]};
+EV[12]={title:'태오의 불빛',axis:'빛 × 사기 × 체력',
+ lines:()=>{const t=P('taeo');const b=here(t)&&t.bite;return here(t)?[b?N('미열로 땀에 젖은 태오가 손전등을 쥐고 있다.'):N('태오가 역무실에서 손전등을 꺼내 왔다.'),L('taeo','구청 대피소, 여기서 2km예요. 옥상에서 보면 이 출구가 보일 거야. 불빛을 보내면… 집사람이 볼지도 몰라.'),L('jinseok','라디오로 대피소 방송을 찾아볼 수도 있어요. 확실하진 않지만.')]
+   :[N('태오의 손전등이 역무실 책상 위에 남아 있다.'),L('jinseok','태오 씨가 하려던 거, 우리가 해요.')];},
+ prompt:'대피소 쪽으로 신호를 보낼 것인가.',
+ options:()=>{const tC=S.mem.d8==='C'?-5:-10;return [
+  O('A','3번 출구 위에서 손전등을 깜빡인다','15일 중 가장 밝은 빛. 계단 위라 가림막도 소용없다.',{light:30,stairs:true,need:()=>S.battery<2?'배터리가 모자라다 (2 필요)':null,tags:['배터리 −2','태오 사기 +15 · 사기(전체) +2','응답 50% → 희망 ③'],
+    run:fx=>{res('battery',-2,fx);mo('taeo',15,fx);moAll(2,fx);S.mem.d12A=true;const r=roll();if(r<=50){gainHope('d12A',fx);return R('hope','세 번째 깜빡임 뒤, 먼 옥상에서 작은 불빛이 두 번 깜빡였다. 대답이었다.',`응답 50% · 굴림 ${r} → 응답`);}return R('heavy','밤하늘은 끝까지 대답하지 않았다.',`응답 50% · 굴림 ${r}`);}}),
+  O('B','진석과 라디오로 방송을 찾는다','주파수를 하나씩 넘긴다.',{sound:2,slots:[{role:'elec',want:'jinseok'}],need:()=>S.battery<2?'배터리가 모자라다 (2 필요)':null,chance:()=>35,judgeLabel:'방송 찾기',tags:['배터리 −2','태오 사기 +8','성공 시 희망 ③'],
+    run:(fx,t)=>{res('battery',-2,fx);mo('taeo',8,fx);const r=roll();if(r<=35){mo('taeo',10,fx);moAll(3,fx);gainHope('d12B',fx);return R('hope','잡음 너머로 생존자 명단을 읽는 목소리. “…강, 지, 영.” 태오가 무릎을 꿇었다. 이어서 안내 방송: “열여섯째 날 아침, 해가 뜨면 이송합니다.”',`판정 35% · 굴림 ${r} → 성공`);}return R('heavy','밤새 돌린 다이얼 끝엔 잡음뿐이었다.',`판정 35% · 굴림 ${r}`);}}),
+  O('C','지금은 안 된다고 붙잡는다','빛은 너무 위험하다.',{tags:[`태오 사기 ${sgn(tC)}`,'사기(전체) −1'],run:fx=>{mo('taeo',tC,fx);moAll(-1,fx);return R('heavy',S.mem.d8==='C'?'“그날 들어 줘서 고마웠어요. 오늘은 참을게요.”':'태오는 손전등을 내려놓고 벽을 향해 돌아누웠다.');}}),
+ ];}};
+EV[13]={title:'하늘의 생일',axis:'빛 × 사기',
+ lines:()=>here(P('haneul'))?[N('오늘 하늘이 아홉 살이 된다.'),here(P('mansuk'))?L('mansuk','계산대 밑에… 생일초가 한 상자 있더라.'):L('miso','계산대 밑에 생일초가 한 상자 있었어요.'),L('haneul','촛불 불어도 돼요?')]
+   :[N('오늘은 하늘의 생일이었을 날이다.'),N('계산대 밑의 생일초 상자를 아무도 열지 못한다.')],
+ prompt:'하늘의 생일을 어떻게 보낼 것인가.',
+ options:()=>[
+  O('A','생일초를 켠다','아홉 개의 작은 불.',{light:10,tags:['하늘 +10 · 만석 +5','사기(전체) +3'],run:fx=>{mo('haneul',10,fx);mo('mansuk',5,fx);moAll(3,fx);return R('relief','하늘이 소원을 빌고 촛불을 껐다. 무슨 소원인지는 끝내 말하지 않았다.');}}),
+  O('B','불 없이 속삭여 축하한다','어둠 속에서 조용히 노래한다.',{sound:5,tags:['하늘 +5','사기(전체) +1'],run:fx=>{mo('haneul',5,fx);moAll(1,fx);return R('relief','열 명이 속삭이는 생일 축하 노래는 생각보다 컸다.');}}),
+  O('C','오늘은 넘기자고 한다','지금은 그럴 때가 아니다.',{tags:['하늘 −5 · 만석 −3'],run:fx=>{mo('haneul',-5,fx);mo('mansuk',-3,fx);return R('heavy','하늘은 생일초 상자를 끌어안고 잠들었다.');}}),
+ ]};
+EV[14]={title:'만석의 부탁',axis:'식량 × 사기',
+ lines:()=>{const m=P('mansuk');if(!here(m))return [N('이름 부르기. 모두가 만석의 이름을 한 번씩 부른다.'),N('배급대 끝에 빈 그릇 하나가 놓여 있다.')];
+   const mem=S.mem.d8==='B'?L('mansuk','어차피 줄어든 몫이니.'):null;
+   return [m.hp<=49?N('만석이 가쁜 숨으로 도경의 소매를 잡는다. 부탁이라기보다 유언처럼 들린다.'):N('만석이 배급 전에 도경을 따로 불렀다.'),L('mansuk','남은 이틀, 내 몫은 하늘이랑 젊은 사람들한테 줘. 나는 괜찮아.'),mem];},
+ prompt:'만석의 부탁을 어떻게 할 것인가.',
+ options:()=>{const m=here(P('mansuk'));const hA=S.mem.d8==='B'?2:5;const cC=S.mem.d8==='B'?5:S.mem.d8==='A'?4:3;return [
+  O('A','받아들인다','만석의 뜻대로.',{need:()=>m?null:'만석이 없다',tags:['15일차까지 만석 체력 −5/일',`하늘 사기 +${hA}`],run:fx=>{P('mansuk').giving=true;fx.push('만석 체력 −5/일');mo('haneul',hA,fx);return R('heavy','만석은 하늘의 그릇에 자기 몫을 붓고, 웃었다.');}}),
+  O('B','거절하고 똑같이 나눈다','“할아버지 몫은 할아버지 거예요.”',{need:()=>m?null:'만석이 없다',tags:['만석 사기 −5'],run:fx=>{mo('mansuk',-5,fx);return R('relief','만석은 한숨을 쉬었지만 그릇을 받았다.');}}),
+  O('C','모두가 조금씩 덜어 준다',m?'만석의 몫을 모두가 채운다.':'빈 그릇에 모두가 한 숟가락씩 덜어 둔다.',{tags:['식량 −3',`사기(전체) +${cC}`],run:fx=>{res('food',-3,fx);moAll(cC,fx);return R('relief',m?'숟가락이 하나씩, 만석의 그릇으로 옮겨 갔다.':'빈 그릇이 조금씩 찼다. 아무도 그것을 먹지 않았다.');}}),
+ ];}};
+EV[15]={title:'열다섯 번째 밤',axis:'3축 동시',
+ lines:()=>S.hope>=3?[N('내일 아침, 해가 뜨면 셔터를 올린다. 떠나기 전 마지막 밤이다.'),L('dokyung','다들… 수고 많았습니다.')]:[N('열다섯 번째 밤. 어디로 가야 할지는 아직 모른다.'),L('dokyung','그래도 여기까지 왔습니다.')],
+ prompt:'마지막 밤을 어떻게 보낼 것인가.',
+ options:()=>{const hasB=S.butane>=2;const fc=S.food>=70?0:3;return [
+  O('A','모든 불을 밝히고 둘러앉는다','잔치. 랜턴, 버너, 촛불, 화면까지.',{light:hasB?30:20,tags:hasB?['사기 +8',fc?'식량 −3':'식량 비용 면제 (여유)','부탄가스 −2']:['부탄가스 없음 · 사기 +5'],run:fx=>{if(hasB){res('butane',-2,fx);if(fc)res('food',-3,fx);moAll(8,fx);}else moAll(5,fx);return R('relief','모든 불이 한자리에 모였다. 열다섯 날 동안 처음 보는 밝기였다.');}}),
+  O('B','생일초 몇 개를 켜고 모여 앉는다','작은 불 몇 개.',{light:10,tags:['사기 +6'],run:fx=>{moAll(6,fx);return R('relief','남은 생일초가 다 탈 때까지 아무도 자지 않았다.');}}),
+  O('C','평소처럼 어둠 속에서','늘 그랬듯이.',{tags:['사기 +3'],run:fx=>{moAll(3,fx);return R('relief','어둠 속에서 누군가 “내일 봐요” 하고 말했다.');}}),
+ ];}};
+
+/* ============ 세 번의 신호 ============ */
+const SIG={
+ supply:{name:'보급',title:'떨어진 상자',preview:'새벽, 헬기 소리가 역 위를 지나갔다. 역 앞 사거리에 무언가 떨어지는 둔탁한 소리.',
+  prep:()=>[['건강한 원정 인원 3명+',live().filter(p=>able(p)&&p.hp>=80).length>=3],['배터리 3+',S.battery>=3],['원정 성공 2회+',S.expSuccess>=2]],
+  lines:()=>[N('역 앞 사거리 한가운데, 낙하산이 달린 구호 상자가 놓여 있다.'),L('sungjin','통째로 들고 오려면 셋은 필요해요.')],
+  options:b=>[
+   O('A','성진·다은·태오가 상자를 통째로 가져온다','무겁고 시간이 걸린다.',{slots:[{role:'exp',want:'sungjin'},{role:'exp',want:'daeun'},{role:'exp',want:'taeo'}],sig:45+b,tags:['식량 +12 · 물 +8 · 의약품 +1','희망 ①',EXP_TAG],
+     ok:fx=>{res('food',12,fx);res('water',8,fx);res('meds',1,fx);gainHope('supA',fx);},half:fx=>{res('food',6,fx);res('water',4,fx);},fail:(fx,t)=>expFail(t,fx),
+     okT:'상자 겉면에 대피소 안내가 인쇄되어 있었다. ‘구청 대피소 — 생존자 수용 중’.',failT:'상자를 끄는 소리가 사거리를 울렸다.'}),
+   O('B','성진 혼자 가벼운 것만','들 수 있는 만큼만.',{slots:[{role:'exp',want:'sungjin'}],sig:70+b,tags:['식량 +6 · 물 +5'],ok:fx=>{res('food',6,fx);res('water',5,fx);},half:fx=>{res('food',3,fx);res('water',2,fx);},okT:'배낭 하나에 통조림과 생수를 채워 왔다.',failT:'상자 근처에 이미 그들이 서성이고 있었다. 성진은 빈손으로 물러났다.'}),
+   O('C','보낸다','헬기가 간 방향을 적어 둔다.',{sigC:true,tags:[seg()<2?'다음 신호 성공률 +10%':'(마지막 신호 · 효과 없음)'],okT:'도경이 벽에 헬기가 사라진 방향을 화살표로 그렸다.'}),
+  ]},
+ radio:{name:'무전',title:'다른 역의 목소리',preview:'역무실 비상 무전기에서 잡음 섞인 목소리가 들렸다. 두 정거장 떨어진 역의 생존자들이다.',
+  prep:()=>[['태양광 패널',S.solar],['진석 생존',here(P('jinseok'))],['이번 구간에 습격 없음',!S.segRaid[seg()]]],
+  lines:()=>[N('무전기에서 다시 목소리가 들린다. “…새봄역, 들리면 응답하라.”'),L('jinseok','오래 교신하면 배터리가 많이 들어요. 소리도 새고.')],
+  options:b=>[
+   O('A','오래 교신하며 물자를 맞바꾼다','서로의 남는 것을 나눈다.',{need:()=>S.battery<4?'배터리가 모자라다 (4 필요)':null,sig:50+b,tags:['배터리 −4','식량 +8 · 의약품 +1','희망 ②','실패 시 그날 밤 소리 +6'],pay:fx=>res('battery',-4,fx),
+     ok:fx=>{res('food',8,fx);res('meds',1,fx);gainHope('radA',fx);},half:fx=>{res('food',4,fx);},fail:fx=>{S.tonight.sound+=6;fx.push('오늘 밤 소리 +6');},
+     okT:'다른 역 사람들이 선로 점검구로 물자를 보내왔다. 그들도 구청 대피소 이야기를 했다.',failT:'교신이 끊기기 직전, 잡음이 대합실에 크게 울렸다.'}),
+   O('B','짧게 서로의 위치만 확인한다','배터리를 아낀다.',{need:()=>S.battery<1?'배터리가 없다':null,sig:80+b,tags:['배터리 −1','희망 ②'],pay:fx=>res('battery',-1,fx),ok:fx=>gainHope('radA',fx),okT:'“우리도 살아 있어요. 구청 대피소가 사람을 받는대요.”',failT:'응답은 잡음 속으로 사라졌다.'}),
+   O('C','응답하지 않는다','주파수를 적어 둔다.',{sigC:true,tags:[seg()<2?'다음 신호 성공률 +10%':'(마지막 신호 · 효과 없음)'],okT:'진석이 주파수를 수첩에 적었다.'}),
+  ]},
+ people:{name:'사람',title:'셔터를 두드리는 소리',preview:'계단 위에서 아이 울음 같은 소리가 들렸다가 사라졌다.',
+  prep:()=>[['식량 40+',S.food>=40],['평균 사기 55+',avgMo()>=55],['보강 또는 가림막',S.reinforced>0||S.screen]],
+  lines:()=>[N('셔터를 두드리는 소리. 엄마와 아이다. 3번 출구 근처에 숨어 있었다고 한다.'),S.mem.d12A?N('여자가 숨을 고르며 말한다. “불빛을 보고 왔어요.”'):N('“지수예요. 얘는 우진이. 대피소에서 오는 길이었어요.”')],
+  options:b=>[
+   O('A','도경이 계단까지 마중 나간다','문을 열고 들인다. 빛이 샌다.',{light:10,stairs:true,slots:[{role:'exp',want:'dokyung'}],sig:45+b+(S.mem.d12A?10:0),noHalf:true,tags:['생존자 +2 · 식량 +6','희망 ③','놓치면 부상 · 물림 의심 ?'],
+     ok:fx=>{JOINERS.forEach(j=>S.people.push(mkP(j,false)));S.jisuJoined=true;fx.push('지수·우진 합류');res('food',6,fx);gainHope('pplA',fx);},fail:(fx,t)=>{t.forEach(x=>hpd(x.p,-20,fx));if(roll()<=40)biteSuspect(t[0].p,fx);},
+     okT:'지수는 대피소에서 여기까지 걸어온 길을 알고 있었다. “16일째 아침에 해가 뜨면, 같이 가요.”',failT:'계단 위에서 비명이 짧게 울리고 끊겼다. 두 사람은 오지 못했다.'}),
+   O('B','문틈으로 물과 식량을 건넨다','문은 열지 않는다.',{need:()=>S.food<5||S.water<5?'건넬 것이 모자라다':null,sure:true,tags:['식량 −5 · 물 −5','희망 ②'],ok:fx=>{res('food',-5,fx);res('water',-5,fx);gainHope('pplB',fx);},okT:'지수가 셔터 틈으로 속삭였다. “구청 대피소에 사람이 있어요. 해 뜨면 가세요.”'}),
+   O('C','문을 열지 않는다','두드리는 소리가 멎을 때까지.',{tags:['사기(전체) −5'],okT:'두드리는 소리는 한참 뒤에 멎었다.',run:fx=>{moAll(-5,fx);}}),
+  ]},
+};
+
+/* ============ 작은 숨 ============ */
+const despair=()=>live().filter(p=>p.mo>=25&&p.mo<=49).sort((a,b)=>a.mo-b.mo);
+const BREATH=[
+ {id:'grandpa',name:'할아버지 그림',cond:()=>here(P('haneul'))&&here(P('mansuk'))&&P('haneul').mo>=60&&despair().length>0,
+  run:fx=>{const d=despair()[0];mo(d,5,fx);mo('haneul',2,fx);return `하늘이 바닥에 할아버지 얼굴을 그려 ${d.short}에게 내밀었다.`;}},
+ {id:'radio',name:'라디오 잡음',cond:()=>S.solar&&S.battery>=5,
+  run:fx=>{res('battery',-1,fx);moAll(2,fx);gainHope('radioNoise',fx);return '이어폰 한 짝씩 돌려 들었다. 잡음 사이로 누군가 대피소 이야기를 한다.';}},
+ {id:'stairs',name:'계단 위 이야기',cond:()=>!!S.today.exp,
+  run:fx=>{moAll(1,fx);S.today.exp.forEach(id=>mo(id,3));fx.push('원정자 사기 +3');return here(P('sungjin'))?'성진이 계단 위 거리 이야기를 했다. 아직 신호등이 깜빡이는 사거리가 있다고.':'원정에서 돌아온 사람들이 바깥 이야기를 했다.';}},
+ {id:'tale',name:'속삭이는 동화',cond:()=>here(P('miso'))&&here(P('haneul'))&&P('miso').mo>=55,
+  run:fx=>{mo('haneul',3,fx);const d=despair()[0];if(d)mo(d,2,fx);return '미소가 속삭이는 동화에, 어른 몇이 같이 잠들었다.';}},
+ {id:'arrow',name:'빛나는 화살표',cond:()=>!S.tonight.wasDark&&here(P('haneul')),
+  run:fx=>{mo('haneul',3,fx);moAll(1,fx);return '잠들기 전 랜턴을 낮추자, 바닥의 축광 화살표가 드러났다. 하늘이 그 길을 따라 깡충깡충 뛰었다.';}},
+];
+
+/* ============ 하루 진행 ============ */
+function curEvent(){if(S.day===7&&S.water>=50)return EV.ramen;return EV[S.day];}
+
+function morningPhase(){
+  const cards=[];
+  S.tonight={lights:[],sound:0,threat:0,def:0,lightsOff:false,soundHalf:false};
+  S.today={exp:null,hopeUp:false,notes:[],looks:[],lookN:0,scout:false,rain:false};S.phase='morning';
+  if(!S.shop)S.shop={stock:0,storage:true,drawer:true,vend:true};
+  S.lostToday=[];
+  S.people.forEach(p=>p.busy=false);
+  if(S.aid.pending){const a=S.aid.pending;S.aid.pending=null;const fx=[];applyAid(a,fx);cards.push({label:'hope',title:a.title,text:a.text,fx});}
+  live().forEach(p=>{
+    if(p.bite&&!p.bite.inf&&S.day>=p.bite.day+4){
+      const fx=[];const rule=p.bite.rule||'C';p.isolated=false;
+      if(rule==='B')mo(p,-15,fx);if(rule==='C'){moAll(3,fx);mo(p,10,fx);}
+      p.bite=null;
+      cards.push({label:'relief',title:'의심이 풀린 아침',text:`${p.short}의 넷째 밤이 무사히 지났다. 물린 자국이 아니라 긁힌 상처였다.`+(rule==='B'?' 하지만 격리실에서 혼자 보낸 밤들은 쉽게 잊히지 않는다.':rule==='C'?' “의심하지 않았다.” 그 말이 오래 남았다.':''),fx});
+    }
+  });
+  const ev=curEvent();if(ev.threat)S.tonight.threat=ev.threat;
+  return cards;
+}
+function sigLabel(){const t=S.signals[seg()];return SIG[t];}
+function sigPrep(){return sigLabel().prep();}
+
+function statusLines(){
+  const out=[];
+  if(S.day===1||S.day===6||S.day===11)out.push(N(`[신호] ${sigLabel().preview}`));
+  if(S.lostPrev.length){const p=P(S.lostPrev[0]);const c=(CLOSE[p.id]||[]).map(P).find(here);
+    out.push(c?L(c.id,`${p.short}…`):N(p.left?`${p.short}의 자리가 비어 있다. 밤사이 3번 출구로 나갔다.`:`${p.short}의 자리에 담요가 개어져 있다.`));}
+  const hurt=live().filter(p=>p.hp<=49&&!p.isolated).sort((a,b)=>a.hp-b.hp)[0];
+  if(hurt){const cg=caregiverId();out.push(N(`어둠 속에서 ${hurt.short}의 ${hurt.hp<=19?'신음':'앓는 소리'}가 들린다.`+(cg&&cg!==hurt.id?` ${P(cg).short}: “조금만 버텨요.”`:'')));}
+  const b=live().find(p=>p.bite);
+  if(b){if(S.day>=b.bite.day+2&&b.bite.fever){const m=ORDER.med.map(P).find(p=>here(p)&&p.id!==b.id);out.push(m?L(m.id,`${b.short} 씨, 이마가 뜨거워요.`):N(`${b.short}의 이마가 뜨겁다.`));}
+    else out.push(N(b.isolated?`편의점 창고 문 너머에서 ${b.short}의 기척이 들린다.`:`사람들이 ${b.short}에게서 조금 떨어져 앉는다.`));}
+  const low=live().filter(p=>p.mo<50&&!WEAK.includes(p.id)).sort((a,b)=>a.mo-b.mo)[0];
+  if(low&&!(S.day===8&&low.id==='taeo'))out.push(L(low.id,low.mo<25?'다 무슨 소용이에요. 어차피 아무도 안 와요.':'…언제까지 이렇게 있어야 하는데요.'));
+  if(S.hopeUpPrev)out.push(N(S.hope>=3?'누군가 대피소까지의 길을 손가락으로 바닥에 그려 본다.':S.hope>=2?'라디오 앞에, 전단지 앞에 사람들이 모여 앉는다.':'구겨진 전단지를 누군가 다시 펴서 읽는다.'));
+  let lines=out.filter(Boolean);const head=lines[0]&&lines[0].t.startsWith('[신호]')?[lines.shift()]:[];
+  lines=head.concat(lines.slice(0,2));
+  if(S.blackout)lines=lines.map(l=>Object.assign({},l,{dark:true}));
+  return lines;
+}
+
+function prepOption(o,extra){
+  o=Object.assign({},o);
+  if(o.slots){o.team=fill(o.slots);if(!o.team){o.disabled=true;o.why='나갈 수 있는 사람이 없다';}}
+  if(!o.disabled&&o.need){const w=o.need();if(w){o.disabled=true;o.why=w;}}
+  if(!o.disabled){
+    if(o.chance){o.c=o.chance(o.team);}
+    if(o.sig!=null)o.c=clamp(o.sig+(extra||0),5,95);
+  }
+  const tags=[];
+  if(o.c!=null)tags.push({t:`${o.judgeLabel||(o.sig!=null?'성공':'원정 성공')} ${o.c}%`+(o.team?` (${names(o.team)})`:''),k:'c'});
+  o.tags.forEach(t=>tags.push({t,k:/\?/.test(t)?'q':''}));
+  if(o.light)tags.push({t:`빛 +${o.light}`+(o.stairs?' (계단 위)':''),k:''});
+  if(o.sound)tags.push({t:`소리 +${o.sound}`,k:''});
+  if(o.back)tags.push({t:`↪ ${o.back}일차에 돌아온다`,k:'back'});
+  o.tagList=tags;
+  o.risk=nightRisk(o);
+  o.sneak=live().some(p=>p.mo<=24&&!p.isolated);
+  return o;
+}
+
+async function playDay(){
+  const cards=morningPhase();
+  UI.render();
+  for(const c of cards)await UI.card(c);
+  // 긴급 결정
+  while(S.queue.length){const q=S.queue.shift();const p=P(q.id);
+    if(q.t==='bite'&&here(p)&&p.bite&&!p.bite.rule){await runBite(p);break;}
+    if(q.t==='med'&&here(p)&&p.hp<=49){await runMedBox(p,q.kind);break;}}
+  if(S.day%5===0)await runSignal();
+  const ev=curEvent();
+  UI.render(ev);
+  await UI.say(statusLines().concat(ev.lines().filter(Boolean)));
+  S.phase='day';UI.render(ev);
+  const make=()=>ev.options().map(o=>prepOption(o));
+  const o=await UI.choose({title:ev.title,prompt:ev.prompt},make(),make);
+  S.phase='night';
+  const fx=[];applyOptStatic(o);
+  const out=o.run(fx,o.team,o.c);
+  const nightRes=doNight();
+  const settle=doSettle();
+  const entry={day:S.day,title:ev.title,choice:`${o.key}. ${o.title}`,label:out.label,text:out.text,night:nightRes.text,extra:S.today.looks.map(l=>'살핌 · '+l.name+' — '+l.text).concat(settle.events.map(e=>e.t))};
+  S.log.push(entry);
+  await UI.card({label:out.label,title:`${S.day}일차 · ${ev.title}`,choice:`${o.key}. ${o.title}`,text:out.text,sub:out.sub,fx,back:o.back,night:nightRes,settle,looks:S.today.looks});
+  endOfDay();
+}
+async function runBite(p){
+  const m=ORDER.med.map(P).find(q=>here(q)&&q.id!==p.id);
+  await UI.say([N('아침. 어젯밤 일로 모두 말이 없다.'),m?L(m.id,`${p.short} 씨 팔에… 이게 물린 자국인지, 긁힌 건지 모르겠어요.`):N(`${p.short}의 팔에 상처가 있다. 물린 것인지 긁힌 것인지 알 수 없다.`),N('약은 없다. 사흘이 지나야 알 수 있다.')]);
+  const opts=[
+    O('A','편의점 창고에 격리하고 간병한다','곁에 사람을 둔다. 간병인은 감염되지 않는다.',{tags:['격리 중 체력 +3/일 · 물 −2/일','감염이었다면 사기(전체) −8']}),
+    O('B','격리만 한다','문을 닫는다.',{tags:['격리 중 체력 −5/일','아니었다면 본인 사기 −15','감염이었다면 사기(전체) −10']}),
+    O('C','함께 지낸다','의심하지 않는다.',{tags:['아니었다면 사기(전체) +3','감염이었다면 대합실 안 습격 ?']}),
+  ].map(o=>prepOption(o));
+  opts.forEach(o=>o.noRisk=true);
+  const o=await UI.choose({title:'물린 자국',prompt:`${p.short}를 어떻게 할 것인가. 이 결정은 앞으로의 규칙이 된다.`,emergency:true},opts);
+  S.biteRule=o.key;
+  live().forEach(q=>{if(q.bite&&!q.bite.rule)applyBiteRule(q);});
+  const txt={A:`${p.short}는 편의점 창고로 들어갔다. 문 옆에 의자 하나가 놓였다.`,B:`창고 문이 닫혔다. 안에서 ${p.short}가 문을 한 번 두드렸다.`,C:`${p.short}는 원래 자리로 돌아갔다. 몇 사람이 조금 떨어져 앉았다.`}[o.key];
+  await UI.card({label:o.key==='C'?'relief':'heavy',title:'물린 자국',choice:`${o.key}. ${o.title}`,text:txt,sub:'결과는 넷째 밤에 드러난다. 이후의 물림 의심자도 같은 방식을 따른다.',fx:[]});
+}
+async function runMedBox(p,kind){
+  const m=ORDER.med.map(P).find(q=>here(q)&&q.id!==p.id&&!q.isolated);
+  await UI.say([N(`${m?m.short:'누군가'}가 역무 창구의 구급함을 연다. 남은 의약품: ${S.meds}개.`),m?L(m.id,`${p.short} 씨, 상처가 ${kind==='빈사'?'너무 깊어요. 이대로면 사흘을 못 버텨요':'깊어요'}. 약을 쓸까요?`):null].filter(Boolean));
+  const cg=ORDER.med.map(P).find(q=>here(q)&&!q.isolated&&q.hp>=20&&q.id!==p.id);
+  const opts=[
+    O('A','지금 쓴다','체력 +15, 사흘간 신음이 멎는다.',{need:()=>S.meds<1?'의약품이 없다':null,tags:['의약품 −1 · 물 −2','체력 +15','3일간 소리 없음']}),
+    O('B','아껴 둔다','다음 부상자를 위해 남긴다.',{tags:['회복 없음 · 소리 그대로',kind==='빈사'?'3일 안에 벗어나지 못하면 사망':'의약품 유지']}),
+    O('C','간병만 한다','곁을 지키며 돌본다.',{need:()=>cg?null:'간병할 사람이 없다',tags:[`간병 +${cg&&cg.id==='yunhee'?5:3}/일`,'간병 담당은 원정·방어 불가']}),
+  ].map(o=>prepOption(o));
+  opts.forEach(o=>o.noRisk=true);
+  const o=await UI.choose({title:'약 상자',prompt:`${p.short}에게 약을 쓸 것인가.`,emergency:true},opts);
+  const fx=[];let txt;
+  if(o.key==='A'){useMed(p,fx);txt=`${p.short}의 숨이 고르게 돌아왔다.`;}
+  else if(o.key==='B'){txt='구급함 뚜껑이 다시 닫혔다.';}
+  else {p.care='med';fx.push(`${p.short} 간병 시작`);txt=`${cg.short}가 ${p.short} 곁에 자리를 폈다.`;}
+  await UI.card({label:o.key==='B'?'heavy':'relief',title:'약 상자',choice:`${o.key}. ${o.title}`,text:txt,fx});
+}
+async function runSignal(){
+  const s=seg();const type=S.signals[s];const sg=SIG[type];
+  const prep=sg.prep();const pc=prep.filter(x=>x[1]).length;const bonus=pc*10+S.sigCarry;
+  await UI.say([N(`[신호 · ${sg.name}] ${sg.title}`)].concat(sg.lines().filter(Boolean)).concat([N(`준비: ${prep.map(x=>(x[1]?'●':'○')+' '+x[0]).join('  ')}`+(S.sigCarry?`  · 넘겨받은 보너스 +${S.sigCarry}%`:''))]));
+  const make=()=>sg.options(0).map(o=>prepOption(o,bonus));
+  const o=await UI.choose({title:sg.title,prompt:'신호에 어떻게 답할 것인가.',signal:true},make(),make);
+  S.sigCarry=0;
+  const fx=[];applyOptStatic(o);if(o.pay)o.pay(fx);
+  let label,text,sub,result;
+  if(o.sigC){if(s<2){S.sigCarry=10;fx.push('다음 신호 +10%');}text=o.okT;label='relief';result='보냄';}
+  else if(o.run){o.run(fx);text=o.okT;label='heavy';result='거절';}
+  else if(o.sure){o.ok(fx);text=o.okT;label='hope';result='닿음';}
+  else{
+    if(o.team)o.team.forEach(t=>t.p.busy=true);
+    const j=judge(o.c,!o.noHalf);sub=`판정 ${o.c}% · 굴림 ${j.r}`;
+    if(j.res==='ok'){o.ok(fx);moAll(2,fx);label='hope';text=o.okT;result='닿음';if(o.team&&o.slots[0].role==='exp'&&type==='supply')S.expSuccess++;}
+    else if(j.res==='half'){if(o.half)o.half(fx);label='relief';text='손에 닿을 듯했지만, 절반만 건졌다.';result='절반';}
+    else{if(o.fail)o.fail(fx,o.team);moAll(-2,fx);label='crisis';text=o.failT;result='놓침';}
+    sub+=` → ${result}`;
+  }
+  S.sigResult[s]={type,result,choice:o.key};
+  S.log.push({day:S.day,title:`신호 · ${sg.title}`,choice:`${o.key}. ${o.title}`,label,text,night:'',extra:[]});
+  await UI.card({label,title:`신호 · ${sg.title}`,choice:`${o.key}. ${o.title}`,text,sub,fx});
+}
+
+/* 밤 판정 */
+function doNight(){
+  const fx=[];const lines=[];
+  S.tonight.wasDark=S.blackout||S.tonight.lightsOff;
+  let sneak=0;live().filter(p=>p.mo<=24&&!p.isolated).forEach(p=>{if(roll()<=30){sneak+=10;lines.push(`${p.short}가 몰래 휴대폰 화면을 켰다. 가족 사진이었다.`);}});
+  if(sneak)S.tonight.lights.push({v:sneak,stairs:false});
+  const risk=nightRisk();const r=roll();let text;let raid=false;
+  if(r<=risk){
+    raid=true;S.segRaid[seg()]=true;
+    let bi=['잠잠','주의','경계','위험'].indexOf(riskBand(risk));
+    if(S.battery>=2){res('battery',-2,fx);bi--;lines.push('손전등 반격 — 피해가 한 구간 줄었다.');}
+    text=`습격 ${risk}% · 굴림 ${r} → 습격 발생`;
+    raidDamage(bi,fx,lines,false);
+  } else text=`습격 ${risk}% · 굴림 ${r} → `+(risk<=15?'조용한 밤':'아슬아슬하게 지나간 밤');
+  if(S.day===9)lines.push('새벽, 출구 계단 아래까지 발소리가 내려왔다.');
+  return {text,fx,lines,raid,risk,roll:r};
+}
+function raidTargets(n){
+  const out=[],used=new Set();const add=p=>{if(out.length<n&&here(p)&&!p.isolated&&!used.has(p.id)){used.add(p.id);out.push(p);}};
+  ORDER.def.forEach(id=>{const p=P(id);if(here(p)&&p.hp>=50)add(p);});
+  live().filter(p=>!WEAK.includes(p.id)&&p.hp>=50).sort((a,b)=>b.hp-a.hp).forEach(add);
+  live().filter(p=>!WEAK.includes(p.id)).sort((a,b)=>b.hp-a.hp).forEach(add);
+  WEAK.forEach(id=>add(P(id)));
+  return out;
+}
+function raidDamage(bi,fx,lines,inside){
+  if(bi<0){lines.push('빛에 눈이 부신 그림자들이 계단 위로 물러났다. 피해 없음.');return;}
+  if(bi===0){moAll(-2,fx);lines.push('배회하던 한두 마리가 셔터를 긁다 사라졌다.');return;}
+  const spec=[null,{n:1,d:15,b:0},{n:2,d:20,b:1},{n:3,d:25,b:3}][bi];
+  const tg=raidTargets(spec.n);
+  tg.forEach(p=>hpd(p,-(spec.d-(p.id==='taeo'?5:0)),fx));
+  lines.push(inside?'대합실 안에서 비명이 터졌다.':['','무리가 셔터를 밀었다.','떼가 바리케이드를 넘어왔다.','물결처럼 밀려들었다.'][bi]);
+  if(spec.b===1){if(tg.length&&roll()<=30)biteSuspect(pick(tg),fx);}
+  if(spec.b===3){tg.forEach(p=>{if(roll()<=30)biteSuspect(p,fx);});
+    const dy=live().filter(p=>p.hp<=19);if(dy.length&&roll()<=50){const v=pick(dy);if(kill(v,'습격'))lines.push(`${v.short}가 끝내 일어나지 못했다.`);}}
+}
+
+/* 하루 정산 */
+function doSettle(){
+  const fx=[];const events=[];const n=live().length;
+  // 자원
+  let fc=Math.round(n*0.8);if(S.halfRation>0)fc=Math.round(fc/2);
+  res('food',-fc,fx);if(S.day<=8)res('food',here(P('eunbi'))?5:3,fx);
+  res('water',-Math.ceil(n*0.5),fx);
+  const isoA=live().filter(p=>p.isolated&&p.bite&&p.bite.rule==='A').length;if(isoA)res('water',-2*isoA,fx);
+  if(S.solar)res('battery',1,fx);
+  if(S.blackout){if(S.battery>=1){res('battery',-1);S.blackout=false;events.push({t:'배터리가 생겨 랜턴이 다시 켜졌다.',k:'g'});}}
+  else if(S.day%2===0){if(S.battery>=1)res('battery',-1,fx);else{S.blackout=true;events.push({t:'랜턴을 충전할 배터리가 없다. 완전 소등.',k:'r'});}}
+  // 체력
+  if(S.food<=19){hpAll(-5);fx.push('기근 · 체력(전체) −5');}
+  if(S.water<=0){hpAll(-10);fx.push('갈증 · 체력(전체) −10');}
+  const f=(S.food<40?0.5:1)*(S.blackout?0.5:1);
+  const cg=caregiverId();const cgAmt=(cg==='yunhee'?5:3)+(S.community>=1?1:0);
+  live().forEach(p=>{
+    if(p.care==='med'){if(cg)hpd(p,Math.floor(cgAmt*f));if(p.hp>=50)p.care=null;}
+    else if(p.care==='haneul'){if(here(P('haneul')))hpd(p,Math.floor(3*f));else p.care=null;}
+    else if(p.isolated&&p.bite&&p.bite.rule==='A'){if(cg)hpd(p,Math.floor(cgAmt*f));}
+    else if(p.isolated&&p.bite&&p.bite.rule==='B'){hpd(p,-5);}
+    else if(p.hp>=50&&p.hp<=79&&!p.busy){p.hp=Math.min(79,p.hp+Math.floor(5*f));}
+    if(p.giving)hpd(p,-5);
+    if(p.quiet>0)p.quiet--;
+  });
+  live().forEach(p=>{if(p.hp<=19){p.dying++;}else p.dying=0;});
+  // 사기
+  if(S.blackout)moAll(-3,fx,'완전 소등 · 사기(전체)');else if(S.community<2)moAll(-1,fx,'어둠의 무게 · 사기(전체)');
+  const fb=foodBand(S.food);if(fb==='위기')moAll(-1,fx,'식량 위기 · 사기(전체)');if(fb==='기근')moAll(-4,fx,'기근 · 사기(전체)');
+  const dyN=live().filter(p=>p.hp<=19).length;if(dyN)moAll(-3*dyN,fx,'빈사자 · 사기(전체)');
+  if(S.halfRation>0){moAll(-3,fx,'배급 절반 · 사기(전체)');S.halfRation--;}
+  despair().forEach(p=>{let b=0;if(S.hope>=1)b+=1;if(S.community>=3)b+=2;if(b)p.mo=clamp(p.mo+b,0,100);});
+  let breath=null;
+  if(S.lostPrev.length){const nm=S.lostPrev.map(id=>P(id).short).join(', ');moAll(3);breath={name:'이름 부르기',text:`모두가 ${nm}의 이름을 한 번씩 불렀다.`,fx:['사기(전체) +3']};}
+  else{for(const b of BREATH){if((S.breath[b.id]||0)>=2)continue;if(b.cond()){const bfx=[];const t=b.run(bfx);S.breath[b.id]=(S.breath[b.id]||0)+1;breath={name:b.name,text:t,fx:bfx};break;}}}
+  live().forEach(p=>p.mo=clamp(p.mo,0,100));
+  live().forEach(p=>{if(p.mo<=24)p.collapse++;else p.collapse=0;});
+  // 사람 정리
+  live().forEach(p=>{if(p.dying>=3&&S.day>3){if(kill(p,'빈사'))events.push({t:`${p.short}가 끝내 빈사를 벗어나지 못했다.`,k:'r'});}});
+  live().forEach(p=>{
+    if(p.bite&&p.bite.inf&&S.day>=p.bite.day+3){
+      if(p.isolated){const sh=p.bite.rule==='B'?10:8;kill(p,'변이',sh);events.push({t:p.bite.rule==='A'?`${p.short}가 격리실에서 숨을 거두었다. 마지막까지 곁에 사람이 있었다.`:`${p.short}가 격리실에서 혼자 숨을 거두었다.`,k:'r'});}
+      else{const chain=p.bite.chain;kill(p,'변이',8);events.push({t:`넷째 밤, ${p.short}의 눈이 회백색으로 흐려졌다. 대합실 안에서.`,k:'r'});
+        const fx2=[],l2=[];raidDamage(3,fx2,l2,true);fx2.forEach(x=>fx.push(x));
+        const v=pick(live().filter(q=>!q.bite&&!q.isolated));if(v){biteSuspect(v,fx,true);}
+        if(chain)S.fallen=true;}
+    }
+  });
+  if(S.hope<3)live().forEach(p=>{if(p.collapse>=2){p.left=true;p.cause='떠남';S.lostToday.push({id:p.id,shock:8,cause:'떠남'});events.push({t:`밤사이 ${josa(p.short,'이','가')} 3번 출구로 떠났다.`,k:'r'});}});
+  S.lostToday.forEach(l=>{moAll(-l.shock);(CLOSE[l.id]||[]).forEach(c=>mo(c,-10));S.lossDays.push(S.day);});
+  if(S.lostToday.length)fx.push(`잃은 사람 · 사기(전체) −${S.lostToday.reduce((a,l)=>a+l.shock,0)}`);
+  live().forEach(p=>p.mo=clamp(p.mo,0,100));
+  // 단계
+  const avg=avgMo();
+  if(S.lostToday.length){if(S.community>0)S.community--;S.streak=[0,3,6,9][S.community];}
+  else if(avg>=55){S.streak++;const ns=S.streak>=9?3:S.streak>=6?2:S.streak>=3?1:0;if(ns>S.community){S.community=ns;events.push({t:`공동체 단계 ↑ ${['','이웃','식구','공동체'][ns]}`,k:'g'});}}
+  else S.streak=[0,3,6,9][S.community];
+  // 구호
+  const recentLoss=S.lossDays.filter(d=>d>S.day-3).length>=2;
+  if(!S.aid.box&&(S.food<=0||S.water<=0||recentLoss)){
+    S.aid.box=true;let k=S.food<=0?'food':S.water<=0?'water':S.meds===0?'meds':(S.food<=S.water?'food':'water');
+    const finder=here(P('dokyung'))?'도경이 역무실의 재난 비상함을 떠올렸다.':'은비가 역무실 캐비닛에서 재난 비상함을 찾아냈다.';
+    S.aid.pending={kind:'box',res:k,title:'역무실 비상함',text:finder};
+  } else if(S.aid.count<3&&S.day-S.aid.last>=3){
+    const cells=[S.water<=20?'water':null,S.food<=39?'food':null,live().filter(p=>p.hp<=49).length>=2?'body':null,S.blackout?'light':null,avg<=49?'morale':null].filter(Boolean);
+    const pr=[0,0,15,35,60,60][cells.length];
+    if(pr&&roll()<=pr){S.aid.count++;S.aid.last=S.day;S.aid.pending={kind:'out',res:cells[0]};const t=AID[cells[0]];S.aid.pending.title='바깥에서 온 것';S.aid.pending.text=t.text;}
+  }
+  if(S.aid.pending&&S.aid.pending.kind==='box')S.aid.last=S.day;
+  // 종료 확인
+  if(avg<=15)S.lowDays++;else S.lowDays=0;
+  if(live().length===0||S.fallen)S.over='dark';
+  else if(S.lowDays>=2)S.over='open';
+  else if(S.day>=15)S.over=judgeEnding();
+  return {fx,events,breath};
+}
+const AID={
+ food:{text:'셔터 틈으로 누군가 비닐봉지를 밀어 넣고 갔다.',run:fx=>res('food',10,fx)},
+ water:{text:'아침, 계단 중간에 생수 묶음이 놓여 있었다.',run:fx=>res('water',10,fx)},
+ body:{text:'셔터 아래에 약국 봉투 하나. 이름은 적혀 있지 않다.',run:fx=>res('meds',1,fx)},
+ light:{text:'계단에 누군가 두고 간 보조배터리.',run:fx=>res('battery',3,fx)},
+ morale:{text:'셔터에 끼워진 쪽지. “여기도 살아 있어요.”',run:fx=>moAll(5,fx)},
+};
+function applyAid(a,fx){
+  if(a.kind==='box'){if(a.res==='food')res('food',15,fx);else if(a.res==='water')res('water',15,fx);else res('meds',1,fx);}
+  else AID[a.res].run(fx);
+}
+function endOfDay(){
+  S.lostPrev=S.lostToday.map(l=>l.id);
+  S.hopeUpPrev=S.today.hopeUp;
+  if(!S.over){S.day++;store.set(SAVE_KEY,S);}
+}
+function judgeEnding(){
+  const l=live(),n=l.length,avg=avgMo();
+  const orig=S.people.filter(p=>p.orig).every(here);
+  if(n===0)return 'dark';
+  if(orig&&avg>=60&&S.hope>=3)return 'family';
+  if(n>=7&&avg>=60&&S.hope>=3)return 'seats';
+  if(n>=4)return 'endure';
+  return 'last';
+}
+const ENDINGS={
+ family:{t:'새봄역 사람들',txt:'셔터를 끝까지 올린다. 햇빛 속으로, 스쳐 지나가던 사람들이 하나의 식구가 되어 함께 걸어 나간다.'},
+ seats:{t:'남겨진 자리',txt:'개어 둔 담요 몇 장을 대합실에 남겨 두고, 햇빛 속으로 걸어 나간다.'},
+ endure:{t:'버텨낸 어둠',txt:'열여섯 번째 아침이 왔지만, 어디로 가야 할지 모른다. 셔터 아래로 내려오는 햇빛을 바라본다.'},
+ last:{t:'마지막 불빛',txt:'남은 사람이 3번 출구 계단에 작은 불을 켠다. 누군가 보기를 바라며.'},
+ dark:{t:'불 꺼진 역',txt:'대합실의 마지막 랜턴이 꺼진다. 출구 계단 아래로 더 이상 아무 소리도 내려가지 않는다.'},
+ open:{t:'열린 셔터',txt:'아침, 3번 출구 셔터가 끝까지 올라가 있다. 대합실에는 아무도 없다.'},
+};
+const END_ORDER=['family','seats','endure','last','dark','open'];
+
+async function gameLoop(){
+  while(!S.over){await playDay();}
+  store.del(SAVE_KEY);
+  const got=store.get(END_KEY)||[];if(!got.includes(S.over)){got.push(S.over);store.set(END_KEY,got);}
+  await UI.finish(S.over);
+}
+
+
+/* ============ 살핌 — 대합실 상호작용 ============ */
+const LOOK_MAX=3;
+const lookLeft=()=>S&&S.today?LOOK_MAX-S.today.lookN:0;
+function mostHurt(){return live().filter(p=>p.hp<80).sort((a,b)=>a.hp-b.hp)[0];}
+function lowestMo(){return live().filter(p=>!p.isolated).sort((a,b)=>a.mo-b.mo)[0];}
+const SPOTS=[
+ {id:'shelf',x:62,y:60,name:'편의점 진열대',
+  info:()=>S.day>=9?'선반은 텅 비었다. 바닥에 가격표만 흩어져 있다.':`은비가 정리해 둔 진열대. 아직 뒤져 볼 칸이 ${S.shop.stock}곳 남았다. (편의점 재고 +5/일은 따로 들어온다)`,
+  actions:()=>[{t:'선반 안쪽을 뒤진다',tags:['식량 +4','오늘 밤 소리 +2'],
+    need:()=>S.day>=9?'편의점은 비었다':S.shop.stock<=0?'더 뒤질 곳이 없다':null,
+    run:fx=>{res('food',4,fx);S.shop.stock--;S.tonight.sound+=2;fx.push('오늘 밤 소리 +2');return pick(['진열대 밑에서 컵라면 몇 개가 굴러 나왔다.','유통기한 지난 빵 한 봉지와 참치캔.','과자 박스 뒤에 즉석밥이 숨어 있었다.']);}}]},
+ {id:'storage',x:22,y:80,name:'편의점 창고',
+  info:()=>{const q=live().find(p=>p.isolated);return q?`문 너머에 ${q.short}가 있다. 격리된 지 ${S.day-q.bite.day}일째.`:'문 달린 작은 창고. 박스와 걸레가 쌓여 있다.';},
+  actions:()=>{const q=live().find(p=>p.isolated);
+    if(q)return [{t:'문 너머로 말을 건다',tags:[`${q.short} 사기 +5`],run:fx=>{mo(q,5,fx);return `문 너머에서 ${q.short}가 작게 웃었다. “고마워요.”`;}}];
+    return [{t:'창고 구석을 뒤진다',tags:['무언가 나올지도 ?'],need:()=>S.shop.storage?'이미 다 뒤졌다':null,
+      run:fx=>{S.shop.storage=true;res('butane',1,fx);return '박스 맨 아래에서 부탄가스 한 통이 나왔다.';}}];}},
+ {id:'office',x:184,y:60,name:'역무실',
+  info:()=>S.solar?'태양광 패널을 연결한 뒤로 역무실 라디오가 살아났다.':'비상 무전기와 서류철. 서랍 몇 개는 잠겨 있다.',
+  actions:()=>S.solar?[{t:'라디오를 켠다',tags:['배터리 −1','사기(전체) +2','오늘 밤 소리 +2'],need:()=>S.battery<1?'배터리가 없다':null,
+      run:fx=>{res('battery',-1,fx);moAll(2,fx);S.tonight.sound+=2;fx.push('오늘 밤 소리 +2');return '잡음 섞인 음악이 흘러나왔다. 몇 사람이 따라 흥얼거렸다.';}}]
+    :[{t:'잠긴 서랍을 연다',tags:['무언가 나올지도 ?'],need:()=>S.shop.drawer?'이미 열었다':null,
+      run:fx=>{S.shop.drawer=true;res('battery',1,fx);return '서랍 안에 역무용 보조배터리 하나.';}}]},
+ {id:'medkit',x:229,y:79,name:'역무 창구 구급함',
+  info:()=>`의약품 ${S.meds}개. 약은 『약 상자』 결정에서만 쓴다. 소독과 붕대는 언제든 할 수 있다.`,
+  actions:()=>{const p=mostHurt();return [{t:p?`${p.short}의 상처를 소독하고 감는다`:'상처를 소독하고 감는다',tags:[p?`${p.short} 체력 +4`:'체력 +4','물 −1'],
+    need:()=>!p?'다친 사람이 없다':S.water<1?'물이 없다':null,
+    run:fx=>{res('water',-1,fx);hpd(p,S.blackout?2:4,fx);return `${p.short}의 붕대를 새로 감았다.`;}}];}},
+ {id:'vending',x:260,y:76,name:'음료 자판기',
+  info:()=>S.shop.vend?'유리가 깨진 빈 자판기.':'전기가 끊긴 자판기. 유리 너머에 음료와 과자가 보인다.',
+  actions:()=>[{t:'유리를 깨고 꺼낸다',tags:['식량 +5','오늘 밤 소리 +5'],need:()=>S.shop.vend?'이미 비었다':null,
+    run:fx=>{S.shop.vend=true;res('food',5,fx);S.tonight.sound+=5;fx.push('오늘 밤 소리 +5');return '유리 깨지는 소리가 대합실을 울렸다. 모두 숨을 죽이고 계단 쪽을 보았다.';}}]},
+ {id:'lantern',x:292,y:64,name:'기둥의 랜턴',
+  info:()=>S.blackout?'배터리가 바닥나 랜턴이 꺼져 있다.':S.tonight.lowLantern?'오늘 밤은 랜턴을 낮춰 두었다.':'역무실 앞 기둥에 건 LED 랜턴 두 개. 생활 조명 '+(S.screen?2:5)+'.',
+  actions:()=>[{t:'오늘 밤 랜턴을 가장 낮게',tags:['오늘 밤 생활 조명 절반','사기(전체) −1'],need:()=>S.blackout?'랜턴이 꺼져 있다':S.tonight.lowLantern?'이미 낮췄다':null,
+    run:fx=>{S.tonight.lowLantern=true;moAll(-1,fx);fx.push('생활 조명 절반');return '랜턴을 낮추자 바닥의 축광 화살표가 희미하게 떠올랐다.';}}]},
+ {id:'stairs',x:428,y:56,name:'3번 출구 계단',
+  info:()=>S.day<=2?'가을비가 계단을 타고 흘러내린다.':`셔터 틈으로 거리가 보인다. 거리의 밀도 +${density()}.`,
+  actions:()=>S.day<=2?[{t:'양동이로 빗물을 받는다',tags:['물 +4'],need:()=>S.today.rain?'양동이가 다 찼다':null,run:fx=>{S.today.rain=true;res('water',4,fx);return '계단 끝에 양동이를 하나 더 놓았다.';}}]
+    :[{t:'계단 위를 살핀다',tags:['오늘 원정 성공률 +5%'],need:()=>S.today.scout?'이미 살폈다':null,run:fx=>{S.today.scout=true;fx.push('오늘 원정 +5%');return `셔터 틈으로 사거리를 내다보았다. 그림자들이 ${density()>=15?'많다. 무리를 지어 서성인다':density()>=5?'드문드문 서성인다':'거의 보이지 않는다'}. 피해 갈 길을 머릿속에 그렸다.`;}}]},
+ {id:'people',x:284,y:150,name:'모여 앉은 사람들',
+  info:()=>{const p=lowestMo();return p?`가장 지친 사람은 ${p.short}. 사기 ${p.mo} (${moBand(p.mo)}).`:'';},
+  actions:()=>{const p=lowestMo();return [{t:p?`${p.short} 곁에 앉는다`:'곁에 앉는다',tags:[p?`${p.short} 사기 +5`:'사기 +5','오늘 밤 소리 +2'],need:()=>p?null:'아무도 없다',
+    run:fx=>{mo(p,5,fx);S.tonight.sound+=2;fx.push('오늘 밤 소리 +2');return `${p.short}와 나란히 앉아 한참 이야기를 나눴다.`;}}];}},
+];
+function doLook(spot,a){
+  const fx=[];const text=a.run(fx);S.today.lookN++;
+  S.today.looks.push({name:spot.name,text,fx});
+  return {text,fx};
+}
+
+
+/* ============ 화면 ============ */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LABEL={relief:'안도',hope:'희망',heavy:'무거운 선택',crisis:'위기',plain:''};
+const BAND_COLOR={'잠잠':'#5FAE79','주의':'#E0A526','경계':'#D8782A','위험':'#C8463A'};
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let advanceFn=null,chooseKeys=null,choiceState=null,lastEv=null,clock='';
+
+/* ---------- 픽셀 장면 ---------- */
+const W=480,H=270;
+const world=document.createElement('canvas');world.width=W;world.height=H;world.id='world';
+const wg=world.getContext('2d');
+const base=document.createElement('canvas');base.width=W;base.height=H;
+const bg=base.getContext('2d');
+let baseData=null,emis=[],baseKey='';
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function hexRGB(h){const n=parseInt(h.slice(1),16);return[n>>16,n>>8&255,n&255];}
+function shade(h,d){const[r,g,b]=hexRGB(h);return `rgb(${clamp(r+d,0,255)|0},${clamp(g+d,0,255)|0},${clamp(b+d,0,255)|0})`;}
+const F=(x,y,w,h,c)=>{bg.fillStyle=c;bg.fillRect(x,y,w,h);};
+const E=(x,y,w,h,c)=>emis.push([x,y,w,h,c]);
+function txt(t,x,y,c,size){bg.font=`700 ${size||8}px "Noto Sans KR","Malgun Gothic",sans-serif`;bg.textBaseline='top';bg.fillStyle=c;bg.fillText(t,x,y);}
+
+const SPR={
+ stand:['...oooo...','..ohhhho..','.ohhhhhho.','.ohssssho.','.osesseso.','.osssssso.','..osssso..','...osso...','.oTttttto.','oTttttttto','oTttttttto','osTtttttso','.oTttttto.','.obbbbbbo.','.obbbbbbo.','.obboobbo.','.obbo.obbo','.obbo.obbo','.oddo.oddo','.oooo.oooo'],
+ sit:['...oooo...','..ohhhho..','.ohhhhhho.','.ohssssho.','.osesseso.','.osssssso.','..osssso..','...osso...','.oTttttto.','oTttttttto','osTtttttso','.oTttttto.','obbbbbbbbo','obbbbbbbbo','.oooooooo.'],
+ kid:['...oooo...','..ohhhho..','.ohhhhhho.','.osesseso.','.osssssso.','..osssso..','.oTttttto.','osTtttttso','.oTttttto.','obbbbbbbbo','.oooooooo.'],
+ lie:['..ooo..ooooooo..','.ohhsoottttttto.','.ohsesottttttto.','.ohssoottttttto.','..ooo..ooooooo..'],
+};
+const PAL={
+ dokyung:{h:'#2a2522',s:'#e6c19c',t:'#34465e',b:'#2b2f38'},
+ yunhee:{h:'#1b1716',s:'#ecc8a4',t:'#e8e6df',b:'#4b5563'},
+ mansuk:{h:'#c9c6be',s:'#d8b08a',t:'#5b6b4a',b:'#3e4636'},
+ haneul:{h:'#2a1f1a',s:'#f0cfae',t:'#e8a6b4',b:'#6b7fb0'},
+ daeun:{h:'#1a1614',s:'#efcaa6',t:'#2d3a6b',b:'#3a3f55'},
+ sungjin:{h:'#241f1c',s:'#e2b994',t:'#d9a52a',b:'#2e3138'},
+ miso:{h:'#4a3326',s:'#eecaa6',t:'#c9b48a',b:'#4d5a6a'},
+ taeo:{h:'#161412',s:'#c99a72',t:'#2b2b2b',b:'#4a4a52'},
+ jinseok:{h:'#7a7672',s:'#ddb690',t:'#3f6b8c',b:'#34383f'},
+ eunbi:{h:'#3a2a22',s:'#efcaa6',t:'#3a8a5a',b:'#2f3338'},
+ jisu:{h:'#2a201b',s:'#e6c19c',t:'#7a5a4a',b:'#3d3f46'},
+ wujin:{h:'#1e1a18',s:'#f0cfae',t:'#6aa3c8',b:'#44506a'},
+};
+const POS={dokyung:[200,120,'stand'],yunhee:[238,122,'stand'],jinseok:[170,123,'stand'],eunbi:[110,119,'stand'],taeo:[404,128,'stand'],
+ sungjin:[352,144,'sit'],daeun:[320,158,'sit'],mansuk:[256,162,'sit'],haneul:[270,165,'kid'],miso:[290,172,'sit'],jisu:[340,176,'sit'],wujin:[328,178,'kid']};
+function sprite(map,x,y,pal){const P2=Object.assign({e:'#1a1410',d:'#1f1b17',T:shade(pal.t,-38)},pal);map.forEach((row,j)=>{for(let i=0;i<row.length;i++){const c=row[i];if(c==='.')continue;F(x+i,y+j,1,1,c==='o'?'#120f0c':P2[c]);}});}
+
+function sceneKey(){if(!S)return 'title';return JSON.stringify([S.blackout,S.screen,S.reinforced,S.defPerm,S.solar,S.shop&&S.shop.vend,S.shop&&S.shop.stock,S.day>=9,Math.ceil(S.water/25),S.people.map(p=>[p.id,here(p),p.isolated,p.hp<=49,p.left])]);}
+function drawBase(){
+  emis=[];const r=mulberry(11);bg.imageSmoothingEnabled=false;
+  const st=S;const empty=st&&st.day>=9;
+  // 천장
+  F(0,0,W,24,'#1b1c20');for(let x=20;x<W;x+=96){F(x,8,56,4,'#2d2f34');F(x+2,12,52,1,'#3b3e44');}
+  F(0,18,W,2,'#24262b');
+  // 뒷벽 타일
+  for(let y=24;y<100;y+=6)for(let x=(y/6%2)*4-4;x<W;x+=8){F(x,y,8,6,'#4f504a');F(x,y,7,5,shade('#7b7c74',(r()-.5)*14));}
+  F(0,50,W,4,'#2f5e8f');F(0,54,W,1,'#1d3f63');
+  F(0,96,W,5,'#3a3934');F(0,100,W,1,'#26251f');
+  // 바닥 타일 (원근감)
+  let y=101,h=7;
+  while(y<H){const tw=h*2.6;for(let x=-((y*7)%tw);x<W;x+=tw){F(x,y,tw,h,'#5e594e');F(x,y,tw-1,h-1,shade('#8a8476',(r()-.5)*16));}y+=h;h+=1.4;}
+  for(let i=0;i<600;i++){F(r()*W|0,101+r()*(H-101)|0,1,1,r()<.5?'#5a554a':'#a39d8e');}
+  // 역 이름판
+  F(196,28,92,18,'#1d2b45');F(196,28,92,1,'#33466a');txt('새봄',205,30,'#f2f2ec',12);txt('Saebom',236,33,'#b9c3d6',8);
+  F(300,30,58,14,'#ece9e0');F(304,37,50,2,'#2f5e8f');for(let i=0;i<6;i++)F(306+i*8,35,3,6,'#f2f2ec'),F(307+i*8,36,1,4,'#2f5e8f');
+  // 편의점
+  F(6,24,126,4,'#2a2b2e');F(6,28,126,11,'#2f7d4f');F(6,37,126,2,'#e58a2b');txt('편의점',12,29,'#ffffff',8);txt('24',112,29,'#ffe0b0',8);
+  F(8,39,122,60,'#1a1f25');F(9,40,120,58,'#27323d');
+  F(12,64,20,34,'#4a4f55');F(13,65,18,32,'#5a6067');F(28,80,2,3,'#c9c2a8');txt('창고',14,58,'#9fb0bf',7);
+  for(const sy of [52,68,84]){F(38,sy,52,2,'#5a5f66');}
+  const stock=!st?24:empty?0:Math.min(36,Math.max(0,(9-st.day)*3+(st.shop?st.shop.stock*2:0)));
+  const cols=['#c94a3d','#e3c04a','#4a8fc9','#e8e3d6','#7ac36a','#d77a2e'];let k=0;
+  for(const sy of [52,68,84])for(let i=0;i<12;i++){if(k++>=stock)break;F(39+i*4+(r()*1|0),sy-6+(r()*2|0),3,6-(r()*2|0),cols[(r()*cols.length)|0]);}
+  if(empty)for(let i=0;i<8;i++)F(40+r()*48|0,95,2,1,'#e9e3d0');
+  F(48,39,2,60,'#151a1f');F(94,39,2,60,'#151a1f');F(96,42,32,56,'#2b3743');F(97,70,2,4,'#9aa5b0');
+  for(let i=0;i<5;i++){F(54+i*14,42,1,10,'#3e4e5d');F(55+i*14,52,1,8,'#36444f');}
+  // 역무실
+  F(150,40,98,58,'#56656b');F(150,40,98,2,'#6c7c82');
+  F(156,50,52,26,'#151d22');F(157,51,50,24,'#1e2a31');F(181,51,2,24,'#151d22');
+  F(158,42,40,7,'#1f3a5a');txt('역무실',161,42,'#e8eef4',7);
+  if(st&&st.solar){F(164,68,10,6,'#3a3a3c');F(165,69,4,3,'#6a6a6e');F(171,69,2,2,'#d9a52a');}
+  F(212,58,32,24,'#151d22');F(213,59,30,22,'#22303a');F(212,82,36,4,'#7a6448');F(212,86,36,10,'#5d4c38');
+  F(226,76,8,6,'#f2f2ec');F(229,77,2,4,'#d23b32');F(227,78,6,2,'#d23b32');txt('창구',216,60,'#9fb0bf',7);
+  // 개찰구
+  for(let i=0;i<5;i++){const gx=150+i*22;F(gx,102,12,16,'#7c7f82');F(gx,102,12,3,'#b5b8bb');F(gx+3,106,5,2,'#24332a');F(gx+12,108,8,2,'#c94a3d');}
+  // 자판기
+  const vb=st&&st.shop&&st.shop.vend;
+  F(252,64,18,36,'#a52c28');F(252,64,18,2,'#d14a44');F(254,68,14,18,vb?'#3a4048':'#24303a');
+  if(!vb){for(let i=0;i<3;i++)for(let j=0;j<3;j++)F(256+i*4,70+j*5,2,3,cols[(i+j*2)%6]);}
+  else{F(256,70,1,10,'#c9d2da');F(260,72,6,1,'#c9d2da');F(262,75,1,8,'#c9d2da');F(250,99,24,1,'#c9d2da');}
+  F(256,90,10,3,'#1a1a1a');
+  // 기둥
+  F(284,20,16,86,'#8a8880');F(284,20,3,86,'#a6a49b');F(297,20,3,86,'#6c6a63');F(282,104,20,4,'#5d5b55');
+  F(287,58,1,8,'#3a372f');F(296,62,1,8,'#3a372f');
+  // 계단 (3번 출구)
+  F(352,24,24,76,'#5f605a');for(let yy=26;yy<100;yy+=6)F(352,yy,24,1,'#4f504a');
+  F(376,24,104,78,'#151412');
+  F(436,24,44,14,'#cfd6dc');F(436,24,44,7,'#7d838a');for(let yy=25;yy<31;yy+=2)F(436,yy,44,1,'#6a7077');
+  for(let s=0;s<12;s++){const sy=100-s*6,sx=378+s*8;F(sx,sy-6,W-sx,6,s%2?'#76736b':'#6a675f');F(sx,sy-6,W-sx,1,'#8e8b82');}
+  F(392,30,18,11,'#1f6f3c');txt('3',398,31,'#ffffff',9);
+  if(st&&st.solar){F(452,40,20,9,'#2d4a7a');for(let i=0;i<4;i++)F(453+i*5,41,1,7,'#4a6aa0');F(452,44,20,1,'#4a6aa0');}
+  if(st&&st.screen){F(362,54,30,48,'#e9e3d0');F(364,56,26,22,'#c9534f');F(364,80,26,3,'#2f5e8f');txt('SALE',366,62,'#ffffff',8);F(366,86,22,2,'#8a8476');F(366,90,16,2,'#8a8476');}
+  if(st&&st.reinforced){F(380,88,16,14,'#a52c28');F(396,92,12,10,'#a07c4e');F(408,96,14,8,'#a07c4e');F(396,92,12,1,'#c49a68');F(384,82,10,6,'#3f5f8a');F(386,88,1,6,'#3f5f8a');F(392,88,1,6,'#3f5f8a');}
+  if(st&&st.defPerm){F(378,100,46,3,'#7a5a3a');F(378,104,46,2,'#6a4a2a');}
+  // 바닥 소품: 배급대, 물통, 상자
+  F(196,124,30,4,'#6d5a42');F(198,128,2,6,'#4d3f2e');F(222,128,2,6,'#4d3f2e');F(204,118,8,6,'#3a3a3c');F(205,117,6,1,'#55555a');F(214,121,8,3,'#2a2a2c');
+  const tubs=st?Math.ceil(st.water/25):3;for(let i=0;i<tubs;i++){const tx=344+i*9;F(tx,114,8,7,'#2f5a86');F(tx,114,8,2,'#6aa0cf');}
+  F(236,104,10,7,'#a07c4e');F(236,104,10,1,'#c49a68');F(246,106,8,5,'#8c6a42');
+  // 깔개(잠자리)
+  const mats=[[170,132,24,8,'#4d6a8a'],[206,144,26,8,'#7a6a4a'],[252,156,28,9,'#5a7a5a'],[284,166,28,9,'#8a5a5a'],[314,152,24,8,'#5d5d70'],[332,170,26,8,'#4a5a4a'],[226,174,26,9,'#6a7d8a'],[346,138,22,8,'#6d5f4a'],[180,160,26,8,'#5a4a5a']];
+  mats.forEach(m=>{F(m[0],m[1],m[2],m[3],m[4]);F(m[0],m[1],m[2],1,shade(m[4],24));F(m[0]+2,m[1]+2,5,3,'#d8d2c2');});
+  // 축광 화살표 (어둠에서만 빛난다)
+  for(const ax of [60,170,280,390]){E(ax,206,10,2,'#5fd08a');E(ax+10,204,2,6,'#5fd08a');E(ax+12,205,2,4,'#5fd08a');E(ax+14,206,1,2,'#5fd08a');}
+  // 사람
+  if(st){
+    const ppl=live().filter(p=>!p.isolated&&POS[p.id]).sort((a,b)=>POS[a.id][1]-POS[b.id][1]);
+    ppl.forEach(p=>{const [x,y,pose]=POS[p.id];const pal=PAL[p.id];
+      if(p.hp<=49){const m=SPR.lie;F(x-5,y-5,20,7,'#6a6a72');sprite(m,x-3,y-m.length,{h:pal.h,s:pal.s,t:'#8a7a6a',b:pal.b});}
+      else{const m=SPR[pose];F(x,y-1,10,2,'rgba(0,0,0,.4)');sprite(m,x,y-m.length,pal);}
+    });
+    S.people.filter(p=>p.orig&&!here(p)&&POS[p.id]).forEach(p=>{const [x,y]=POS[p.id];F(x,y-3,10,3,'#5a5246');F(x,y-3,10,1,'#7a7264');});
+  } else {
+    Object.keys(POS).slice(0,10).forEach(id=>{const [x,y,pose]=POS[id];const m=SPR[pose];sprite(m,x,y-m.length,PAL[id]);});
+  }
+  baseData=bg.getImageData(0,0,W,H).data;
+}
+const BAYER=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5].map(v=>v/16-0.5);
+function lightPass(t){
+  const key=sceneKey();if(key!==baseKey){baseKey=key;drawBase();}
+  const out=wg.createImageData(W,H),d=out.data,src=baseData;
+  const lit=!S||!S.blackout;const low=S&&S.tonight&&S.tonight.lowLantern;
+  const amb=lit?0.25:0.08;const LR=low?110:200;
+  const fl=lit?(0.94+0.04*Math.sin(t/170)+0.025*Math.sin(t/47)):0;
+  const rain=S&&S.day<=2;const sun=rain?0.45:0.7;
+  const q=0.09;
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const th=BAYER[(y&3)*4+(x&3)];
+      let wi=0;if(lit){const dx=(x-292)*0.95,dy=(y-112)*1.15;const dd=Math.sqrt(dx*dx+dy*dy);if(dd<LR)wi=Math.pow(1-dd/LR,1.35)*1.3*fl;}
+      const sx=x-470,sy=(y-26)*1.35;const sd=Math.sqrt(sx*sx+sy*sy);let si=sd<190?Math.pow(1-sd/190,1.7)*sun:0;
+      wi=Math.max(0,Math.floor(wi/q+th+.5)*q);si=Math.max(0,Math.floor(si/q+th+.5)*q);
+      const lr=amb+wi+si*0.86,lg=amb+wi*0.78+si*0.92,lb=amb*1.1+wi*0.45+si*1.0;
+      const k=(y*W+x)*4;
+      d[k]=Math.min(255,src[k]*lr);d[k+1]=Math.min(255,src[k+1]*lg);d[k+2]=Math.min(255,src[k+2]*lb);d[k+3]=255;
+    }
+  }
+  wg.putImageData(out,0,0);
+  // 발광체
+  wg.fillStyle='#e7edf2';wg.fillRect(436,31,44,7);
+  if(lit){wg.fillStyle=low?'#c98d2e':'#ffd476';wg.fillRect(285,66,5,7);wg.fillRect(294,70,5,7);wg.fillStyle='#fff1c4';wg.fillRect(286,68,3,3);wg.fillRect(295,72,3,3);}
+  else{wg.fillStyle='#2a2721';wg.fillRect(285,66,5,7);wg.fillRect(294,70,5,7);}
+  wg.fillStyle='#16130f';wg.fillRect(285,65,5,1);wg.fillRect(294,69,5,1);
+  wg.fillStyle=lit?'#3d8a57':'#4fb874';wg.fillRect(393,31,1,1);
+  if(!lit||low){const a=lit?0.35:0.85;wg.globalAlpha=a;emis.forEach(e=>{wg.fillStyle=e[4];wg.fillRect(e[0],e[1],e[2],e[3]);});wg.globalAlpha=1;}
+  if(rain){wg.fillStyle='rgba(200,215,230,.55)';const rr=mulberry((t/90)|0);for(let i=0;i<26;i++)wg.fillRect(380+rr()*98|0,26+rr()*70|0,1,3);}
+}
+let layout={s:1,ox:0,oy:0};
+function layoutWorld(){
+  const st=$('#stage');const portrait=matchMedia('(max-aspect-ratio: 1/1)').matches;const sw=st.clientWidth,sh=portrait?sw*H/W:st.clientHeight;if(!sw||!sh)return;
+  const s=portrait?sw/W:Math.max(sw/W,sh/H);const ox=(sw-W*s)/2;const oy=Math.min(0,(sh-H*s)*0.3);
+  layout={s,ox,oy};
+  world.style.width=W*s+'px';world.style.height=H*s+'px';world.style.left=ox+'px';world.style.top=oy+'px';
+  placeSpots();
+}
+const toScreen=(x,y)=>[layout.ox+x*layout.s,layout.oy+y*layout.s];
+
+/* ---------- 살핌 점 ---------- */
+let popEl=null;
+function spotsActive(){return !!(S&&S.tonight&&!S.over&&(S.phase==='day'||S.phase==='morning')&&$('#modal').classList.contains('hidden')&&$('#cover').classList.contains('hidden'));}
+function placeSpots(){
+  const layer=$('#spots');
+  if(!S||S.over){layer.innerHTML='';return;}
+  if(!layer.children.length){
+    layer.innerHTML=SPOTS.map(sp=>`<button class="spot" data-id="${sp.id}" aria-label="${esc(sp.name)}"><span class="lbl">${esc(sp.name)}</span></button>`).join('');
+    layer.querySelectorAll('.spot').forEach(b=>b.onclick=e=>{e.stopPropagation();openSpot(b.dataset.id);});
+  }
+  layer.classList.toggle('locked',!spotsActive());
+  layer.querySelectorAll('.spot').forEach(b=>{const sp=SPOTS.find(s=>s.id===b.dataset.id);const [x,y]=toScreen(sp.x,sp.y);b.style.left=x+'px';b.style.top=y+'px';
+    let spent=true;try{spent=!S.tonight||sp.actions().every(a=>a.need&&a.need());}catch(e){}
+    b.classList.toggle('spent',spent||lookLeft()<=0);});
+}
+function closePop(){if(popEl){popEl.remove();popEl=null;}}
+function openSpot(id){
+  closePop();const sp=SPOTS.find(s=>s.id===id);
+  if(!spotsActive()){toast('지금은 살필 수 없다. 하루의 결정을 내리는 동안 살필 수 있다.');return;}
+  const acts=sp.actions();const left=lookLeft();
+  const el=document.createElement('div');el.className='pop';
+  el.innerHTML=`<h4>${esc(sp.name)}</h4><div class="inf">${esc(sp.info())}</div>`+acts.map((a,i)=>{const why=a.need&&a.need();const dis=why||left<=0;
+    return `<button class="act" data-i="${i}" ${dis?'disabled':''}><b>${esc(a.t)}</b><span class="tags">${a.tags.map(t=>`<span class="tag ${/\?/.test(t)?'q':''}">${esc(t)}</span>`).join('')}</span>${why?`<div class="why">${esc(why)}</div>`:left<=0?'<div class="why">오늘은 더 살필 여유가 없다</div>':''}</button>`;}).join('')+
+    `<div class="pf"><span>오늘의 살핌 ${S.today.lookN}/${LOOK_MAX}</span><button id="popX">닫기</button></div>`;
+  $('#stage').appendChild(el);popEl=el;
+  const [x,y]=toScreen(sp.x,sp.y);const sw=$('#stage').clientWidth;
+  const w=el.offsetWidth,h=el.offsetHeight;
+  let lx=clamp(x-w/2,10,Math.max(10,sw-w-10)),ly=y+18;if(ly+h>$('#stage').clientHeight-10)ly=Math.max(10,y-h-18);
+  el.style.left=lx+'px';el.style.top=ly+'px';
+  el.querySelector('#popX').onclick=closePop;
+  el.querySelectorAll('.act').forEach(b=>b.onclick=()=>{const a=acts[+b.dataset.i];closePop();const r=doLook(sp,a);toast(r.text,r.fx);UI.render();refreshChoices();});
+}
+let toastT=null;
+function toast(text,fx){
+  let t=$('.toast');if(!t){t=document.createElement('div');t.className='toast';$('#stage').appendChild(t);}
+  t.style.opacity=1;t.innerHTML=esc(text)+(fx&&fx.length?fxHTML(fx):'');
+  clearTimeout(toastT);toastT=setTimeout(()=>{t.style.opacity=0;setTimeout(()=>t.remove(),400);},3600);
+}
+document.addEventListener('click',e=>{if(popEl&&!popEl.contains(e.target)&&!e.target.closest('.spot'))closePop();});
+
+/* ---------- HUD ---------- */
+function meter(label,val,pct,bad){return `<div class="mt ${bad?'bad':''}"><small>${label}</small><b>${val}</b><div class="bar"><i style="width:${clamp(pct,0,100)}%"></i></div></div>`;}
+function renderHud(){
+  if(!S){$('#hday').innerHTML='<b>소등</b><span>Lights Out</span>';$('#meters').innerHTML='';$('#res').innerHTML='';$('#signaltag').classList.add('hidden');return;}
+  const avg=avgMo(),l=live().length,total=S.people.length;
+  const dd=S.hope>=3?`대피소까지 D-${Math.max(0,16-S.day)}`:`남은 날 D-${Math.max(0,15-S.day)}`;
+  $('#hday').innerHTML=`<b>Day ${Math.min(S.day,15)}</b><span><i>초가을</i> · ${clock||'이른 아침 · 06:40'} · ${dd}</span>`;
+  const risk=S.tonight?nightRisk():null;
+  $('#meters').innerHTML=meter('식량',`${S.food} · ${foodBand(S.food)}`,S.food,S.food<40)+meter('사기',`${avg} · ${moBand(avg)}`,avg,avg<50)+meter('생존자',`${l}/${total}`,l/total*100,l<total)+(risk!=null?meter('습격',`${riskBand(risk)} · ${risk}%`,risk,risk>35):'');
+  const c=(n,v,bad)=>`<span class="${bad?'bad':''}">${n}<b>${v}</b></span>`;
+  $('#res').innerHTML=c('물',S.water,S.water<=20)+c('부탄',S.butane,S.butane<1)+c('배터리',S.battery,S.battery<2)+c('의약품',S.meds,S.meds<1)+
+    c('랜턴',S.blackout?'꺼짐':(S.tonight&&S.tonight.lowLantern?'낮춤':'켜짐'),S.blackout)+c('공동체',['—','이웃','식구','공동체'][S.community])+c('희망',['○○○','●○○','●●○','●●●'][S.hope])+
+    (S.today?`<span class="looks">오늘의 살핌<b>${S.today.lookN}/${LOOK_MAX}</b></span>`:'');
+  const sgi=Math.min(2,seg());const sgt=S.signals[sgi];const prep=SIG[sgt].prep();const res=S.sigResult[sgi];const left=(sgi*5+5)-S.day;
+  const tag=$('#signaltag');tag.classList.remove('hidden');
+  tag.innerHTML=`신호 · ${SIG[sgt].name} 「${SIG[sgt].title}」<br><span class="dots">${prep.map(x=>x[1]?'●':'○').join('')}</span> `+(res?`결과: ${res.result}`:(left>0?`결판까지 ${left}일`:'오늘 결판'));
+}
+UI.render=function(ev){
+  if(ev)lastEv=ev;ev=ev||lastEv;
+  if(S&&S.phase==='morning')clock='이른 아침 · 06:40';else if(S&&S.phase==='day')clock='낮 · 13:10';else if(S&&S.phase==='night')clock='밤 · 23:40';
+  renderHud();lightPass(performance.now());placeSpots();
+  $('#eventtag').innerHTML=S&&ev?`<small>${S.day}일차</small><b>${esc(ev.title)}</b><em>${esc(ev.axis||'')}</em>`:'';
+};
+
+/* ---------- 대사 · 선택 ---------- */
+function lineHTML(l,cur){
+  if(!l)return '';const dark=l.dark?' dark':'';
+  if(l.who)return `<p class="line${cur?' cur':''}${dark}"><span class="who">${esc(l.who)}</span>“${esc(l.t)}”</p>`;
+  return `<p class="line${cur?' cur':''}${dark}">${esc(l.t)}</p>`;
+}
+function showBottom(on){$('#bottom').classList.toggle('empty',!on);}
+UI.say=function(lines){
+  lines=lines.filter(Boolean);
+  return new Promise(res=>{
+    const box=$('#dialog');let i=0;const shown=[];
+    showBottom(true);box.classList.remove('compact');
+    $('#choices').innerHTML='';$('#prompt').textContent='';
+    const step=()=>{
+      if(i>=lines.length){advanceFn=null;box.onclick=null;const f=box.querySelector('.dfoot');if(f)f.remove();res();return;}
+      shown.push(lines[i++]);
+      box.innerHTML=`<div class="head">상황</div>`+shown.map((l,k)=>lineHTML(l,k===shown.length-1)).join('')+`<div class="dfoot"><span>${i} / ${lines.length}</span><span class="go">▸ ${i>=lines.length?'선택으로':'계속 (클릭)'}</span></div>`;
+      box.scrollTop=box.scrollHeight;
+    };
+    advanceFn=step;box.onclick=step;step();
+  });
+};
+function renderChoices(){
+  const {ctx,opts}=choiceState;const wrap=$('#choices');
+  $('#prompt').textContent=ctx.prompt||'';
+  wrap.innerHTML=opts.map((o,i)=>{
+    const band=riskBand(o.risk);
+    const risk=o.noRisk?'':`<div class="risk"><span>밤 습격</span><span class="bar"><i style="width:${o.risk}%;background:${BAND_COLOR[band]}"></i></span><b>${o.risk}%</b>${o.sneak?'<span class="why" title="사기가 무너진 사람이 몰래 불을 켤 수 있다">+ 몰래 켠 불?</span>':''}</div>`;
+    return `<button class="opt" data-i="${i}" ${o.disabled?'disabled':''}><h3><span class="k">${o.key}</span>${esc(o.title)}</h3><p>${esc(o.desc)}</p>
+    <div class="tags">${o.tagList.map(t=>`<span class="tag ${t.k}">${esc(t.t)}</span>`).join('')}</div>${o.disabled?`<div class="why">${esc(o.why)}</div>`:''}${risk}</button>`;
+  }).join('');
+  wrap.querySelectorAll('.opt').forEach(b=>b.onclick=()=>choiceState.go(+b.dataset.i));
+}
+function refreshChoices(){if(choiceState&&choiceState.remake){choiceState.opts=choiceState.remake();if(choiceState.ctx.emergency)choiceState.opts.forEach(o=>o.noRisk=true);renderChoices();}}
+UI.choose=function(ctx,opts,remake){
+  return new Promise(res=>{
+    showBottom(true);$('#dialog').classList.add('compact');$('#dialog').scrollTop=1e5;
+    choiceState={ctx,opts,remake,go:i=>{const o=choiceState.opts[i];if(!o||o.disabled)return;chooseKeys=null;choiceState=null;closePop();$('#choices').innerHTML='';$('#prompt').textContent='';res(o);}};
+    chooseKeys=i=>choiceState&&choiceState.go(i);
+    renderChoices();UI.render();
+  });
+};
+function fxHTML(arr){if(!arr||!arr.length)return '';return `<div class="fx">${arr.map(f=>`<span class="${/★|희망|합류/.test(f)?'g':/−|의심|사망/.test(f)?'r':''}">${esc(f)}</span>`).join('')}</div>`;}
+function openModal(html,wide){closePop();$('#panel').className='panel'+(wide?' wide':'');$('#panel').innerHTML=html;$('#modal').classList.remove('hidden');placeSpots();}
+function closeModal(){$('#modal').classList.add('hidden');$('#panel').innerHTML='';placeSpots();}
+UI.card=function(c){
+  return new Promise(res=>{
+    let h=`<div class="lab ${c.label}">${LABEL[c.label]||''}</div><div class="pbody"><h2>${esc(c.title)}</h2>`;
+    if(c.choice)h+=`<div class="sub">${esc(c.choice)}</div>`;
+    if(c.looks&&c.looks.length)h+=`<div class="sec"><h4>오늘의 살핌</h4>${c.looks.map(l=>`<div class="event-line">${esc(l.name)} — ${esc(l.text)}</div>${fxHTML(l.fx)}`).join('')}</div>`;
+    h+=`<div class="sec"><h4>${c.night?'① 선택 결과':'결과'}</h4><div class="txt">${esc(c.text)}</div>${c.sub?`<div class="sub">${esc(c.sub)}</div>`:''}${fxHTML(c.fx)}${c.back?`<div class="sub" style="margin-top:6px;color:var(--amberInk)">↪ 이 선택은 ${c.back}일차에 다시 돌아온다.</div>`:''}</div>`;
+    if(c.night){h+=`<div class="sec"><h4>② 오늘 밤</h4><div>${esc(c.night.text)}</div>${c.night.lines.map(l=>`<div class="event-line ${c.night.raid?'r':''}">${esc(l)}</div>`).join('')}${fxHTML(c.night.fx)}</div>`;
+      const st=c.settle;h+=`<div class="sec"><h4>③ 하루 정산</h4>${fxHTML(st.fx)}${st.breath?`<div class="event-line g" style="margin-top:8px">작은 숨 「${esc(st.breath.name)}」 — ${esc(st.breath.text)}</div>${fxHTML(st.breath.fx)}`:''}${st.events.map(e=>`<div class="event-line ${e.k}">${esc(e.t)}</div>`).join('')}</div>`;}
+    h+=`</div><div class="actions"><button class="btn" id="cardGo">${c.night?(S.over?'아침을 맞는다':'다음 날'):'계속'}</button></div>`;
+    UI.render();openModal(h);
+    const go=()=>{advanceFn=null;closeModal();res();};
+    $('#cardGo').onclick=go;advanceFn=go;$('#cardGo').focus({preventScroll:true});
+  });
+};
+
+/* ---------- 인물 · 일지 ---------- */
+function peopleHTML(title,btn){
+  const all=S?S.people:CHARS.map(c=>mkP(c,true));
+  const bar=(v,c)=>`<span class="bar"><i style="width:${v}%;background:${c}"></i></span>`;
+  return `<div class="lab plain">${title||'인물 · 체력과 사기'}</div><div class="pbody"><div class="ppl">${all.map(p=>{
+    const gone=!here(p);const st=[];
+    if(gone)st.push(p.cause==='떠남'?'떠났다':`잃었다 (${p.cause||''})`);
+    else{if(p.isolated)st.push('격리 중');if(p.bite)st.push('물림 의심 ?');if(p.hp<=19)st.push(`빈사 ${p.dying}일째`);else if(p.hp<=49)st.push('중상');if(p.care)st.push('간병 받는 중');if(p.mo<=24)st.push('붕괴 — 떠날 수 있다');}
+    return `<div class="pc ${gone?'gone':''}"><h5>${esc(p.name)}<small>${p.age} · ${esc(p.job)}</small></h5>
+    <div class="meter">체력 ${bar(p.hp,'var(--relief)')} <b>${p.hp}</b> ${hpBand(p.hp)}</div>
+    <div class="meter">사기 ${bar(p.mo,'var(--amber)')} <b>${p.mo}</b> ${moBand(p.mo)}</div>
+    <div class="ab">${esc(p.ab)}</div>${st.length?`<div class="stt">${st.join(' · ')}</div>`:''}</div>`;}).join('')}</div></div>
+    <div class="actions"><button class="btn" id="mClose">${btn||'닫기'}</button></div>`;
+}
+function logHTML(final){
+  const col={relief:'var(--relief)',hope:'var(--hope)',heavy:'var(--heavy)',crisis:'var(--crisis)'};
+  let h=`<div class="lab plain">${final?'15일 일지':'일지'}</div><div class="pbody">`;
+  if(!S||!S.log.length)h+='<p class="sub">아직 기록이 없다.</p>';
+  else h+=S.log.map(e=>`<div class="logrow"><b>${e.day}일차</b><div><span class="dotlab" style="background:${col[e.label]}"></span><strong>${esc(e.title)}</strong> — ${esc(e.choice)}<div class="sub">${esc(e.text)}</div>${e.night?`<div class="sub">밤: ${esc(e.night)}</div>`:''}${e.extra.map(x=>`<div class="sub">· ${esc(x)}</div>`).join('')}</div></div>`).join('');
+  if(final){
+    const miss=HOPE_SRC.filter(h=>!S.hopeGot.includes(h.id));
+    h+=`<div class="sec"><h4>놓친 단서 (${miss.length})</h4>${miss.map(m=>`<div class="sub">${HOPE_NAME[m.lv]} · ${esc(m.t)}</div>`).join('')||'<div class="sub">모든 단서를 찾았다.</div>'}</div>`;
+    if(S.over!=='family'){const forks=S.log.filter(e=>e.label==='heavy'||e.label==='crisis').slice(-3);
+      if(forks.length)h+=`<div class="sec"><h4>갈림길 셋</h4>${forks.map(e=>`<div class="event-line r">${e.day}일차 「${esc(e.title)}」 ${esc(e.choice)}</div>`).join('')}</div>`;}
+  }
+  h+=`</div><div class="actions"><button class="btn" id="mClose">${final?'타이틀로':'닫기'}</button></div>`;
+  return h;
+}
+$('#btnPeople').onclick=()=>{openModal(peopleHTML(),true);$('#mClose').onclick=closeModal;};
+$('#btnLog').onclick=()=>{openModal(logHTML(false),true);$('#mClose').onclick=closeModal;};
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){if(popEl){closePop();return;}}
+  if(!$('#modal').classList.contains('hidden')&&!advanceFn){if(e.key==='Escape')closeModal();return;}
+  if((e.key===' '||e.key==='Enter')&&advanceFn&&!document.activeElement?.closest?.('.opt,.spot,.pop')){e.preventDefault();advanceFn();return;}
+  if(chooseKeys&&!popEl){const k=e.key.toUpperCase();const i='ABC'.indexOf(k)>=0?'ABC'.indexOf(k):'123'.indexOf(k);if(i>=0){e.preventDefault();chooseKeys(i);}}
+});
+
+/* ---------- 타이틀 · 프롤로그 · 엔딩 ---------- */
+function showTitle(){
+  S=null;lastEv=null;choiceState=null;closePop();UI.render();$('#dialog').innerHTML='';$('#choices').innerHTML='';$('#prompt').textContent='';showBottom(false);
+  const save=store.get(SAVE_KEY);const got=store.get(END_KEY)||[];
+  const cv=$('#cover');cv.className='cover';
+  cv.innerHTML=`<h1>소등</h1><div class="en">LIGHTS OUT</div><p class="lead">정전된 지하철 새봄역. 열 명이 보름을 버틴다. 불을 켜면 마음이 풀리고, 불나방이 온다.</p>
+  <div class="row"><button class="cbtn" id="tNew">새 게임</button><button class="cbtn alt" id="tCont" ${save?'':'disabled'}>이어하기${save?` · ${save.day}일차`:''}</button></div>
+  <div class="endgrid">${END_ORDER.map(k=>`<span class="${got.includes(k)?'got':''}">${got.includes(k)?ENDINGS[k].t:'？'}</span>`).join('')}</div>`;
+  $('#tNew').onclick=()=>{cv.className='cover hidden';newGame();prologue();};
+  $('#tCont').onclick=()=>{if(!save)return;cv.className='cover hidden';S=save;start();};
+}
+async function prologue(){
+  S.phase='title';UI.render({title:'프롤로그',axis:'정전 첫날 밤'});
+  await UI.say([N('출근 시간, 수도권 신도시의 지하철 새봄역.'),N('도심에서 시작된 회백 바이러스가 몇 시간 만에 이곳까지 번졌다. 사람들은 그들을 ‘불나방’이라 불렀다. 눈이 회백색으로 흐려진 채, 빛을 향해 걸어오는 사람들.'),N('셔터가 내려가고, 대합실에 열 명이 남았다.'),L('dokyung','비상조명은 축전지예요. 한 시간쯤 갈 겁니다.'),N('그리고 첫날 밤, 비상조명이 꺼졌다.'),L('jinseok','…랜턴 켭시다. 낮게요.'),N('이제부터 새봄역의 모든 불은, 누군가 들고 온 것이다.'),N('장면 속의 하얀 점은 살펴볼 수 있는 곳이다. 하루 세 번, 결정을 내리기 전에 대합실을 살필 수 있다.')]);
+  await new Promise(r=>{openModal(peopleHTML('새봄역의 열 사람','1일차 시작'),true);$('#mClose').onclick=()=>{closeModal();r();};});
+  start();
+}
+async function start(){
+  try{await gameLoop();}catch(err){console.error(err);showBottom(true);$('#dialog').innerHTML=`<p class="line cur">오류가 발생했다: ${esc(err.message)}</p>`;}
+}
+UI.finish=async function(key){
+  const e=ENDINGS[key];S.phase='end';
+  UI.render();$('#eventtag').innerHTML='';$('#signaltag').classList.add('hidden');$('#dialog').innerHTML='';$('#choices').innerHTML='';$('#prompt').textContent='';showBottom(false);$('#spots').innerHTML='';
+  let extra='';if(key==='endure'&&S.hope>=1)extra=' 어딘가 있다는 것만은 안다.';
+  const cv=$('#cover');cv.className='cover ending';
+  const survivors=live().map(p=>p.short).join(', ');
+  cv.innerHTML=`<div class="en">${key==='dark'||key==='open'?`${S.day}일차`:'16일째 아침'}</div><h1>${esc(e.t)}</h1><p class="lead">${esc(e.txt+extra)}</p>
+   <p class="lead" style="font-size:14px;margin-top:-8px">살아남은 사람: ${survivors||'없음'} · 희망 ${HOPE_NAME[S.hope]} · 평균 사기 ${avgMo()}</p>
+   <div class="row"><button class="cbtn" id="eLog">15일 일지 보기</button><button class="cbtn alt" id="eTitle">타이틀로</button></div>`;
+  await new Promise(r=>{
+    $('#eTitle').onclick=r;
+    $('#eLog').onclick=()=>{openModal(logHTML(true),true);$('#mClose').onclick=()=>{closeModal();r();};};
+  });
+  cv.className='cover hidden';showTitle();
+};
+
+/* ---------- 시작 ---------- */
+$('#stage').prepend(world);
+new ResizeObserver(layoutWorld).observe($('#stage'));
+layoutWorld();
+if(!REDUCED)setInterval(()=>{if(!document.hidden)lightPass(performance.now());},140);
+showTitle();
+
+</script>
+</body>
+</html>
